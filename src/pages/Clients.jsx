@@ -30,7 +30,9 @@ const AddClientModal = ({ onClose, onSaved }) => {
     status: 'Active', 
     assigned_to: '',
     payment_method: '',
-    card_number: ''
+    card_number: '',
+    card_expiry: '',
+    card_cvv: ''
   });
   const [staffList, setStaffList] = useState([]);
   const [saving, setSaving] = useState(false);
@@ -70,7 +72,7 @@ const AddClientModal = ({ onClose, onSaved }) => {
   };
 
   return (
-    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+    <div className="modal-overlay">
       <motion.div initial={{ opacity: 0, scale: 0.96, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }} className="modal-box">
         <div className="modal-header">
           <span className="modal-title">Add New Client</span>
@@ -114,6 +116,7 @@ const AddClientModal = ({ onClose, onSaved }) => {
                     <label className="label">Method</label>
                     <select className="input" value={form.payment_method} onChange={e => up('payment_method', e.target.value)}>
                       <option value="">Select Method...</option>
+                      <option value="Merchant Client">Merchant Client</option>
                       <option value="Visa">Visa Card</option>
                       <option value="MasterCard">MasterCard</option>
                       <option value="AMEX">American Express</option>
@@ -129,6 +132,25 @@ const AddClientModal = ({ onClose, onSaved }) => {
                       placeholder="XXXX XXXX XXXX XXXX"
                       value={form.card_number}
                       onChange={e => up('card_number', e.target.value.replace(/\D/g, '').slice(0, 16))}
+                    />
+                  </div>
+                  <div>
+                    <label className="label">Expiry (MM/YY)</label>
+                    <input 
+                      className="input" 
+                      placeholder="12/28"
+                      value={form.card_expiry}
+                      onChange={e => up('card_expiry', e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="label">CVV</label>
+                    <input 
+                      className="input" 
+                      type="password"
+                      placeholder="***"
+                      value={form.card_cvv}
+                      onChange={e => up('card_cvv', e.target.value.replace(/\D/g, '').slice(0, 4))}
                     />
                   </div>
                 </div>
@@ -250,7 +272,7 @@ const Clients = () => {
                         onClick={() => navigate(`/clients/${client.id}`)}>
                         <td>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                            <div className="avatar" style={{ background: abg, color: afg, width: 36, height: 36, fontSize: 13, borderRadius: 10 }}>{client.full_name[0]}</div>
+                            <div className="avatar" style={{ background: abg, color: afg, width: 36, height: 36, fontSize: 13, borderRadius: 10 }}>{client.full_name?.[0] || 'U'}</div>
                             <div>
                               <p style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text-primary)' }}>{client.full_name}</p>
                               <p style={{ fontSize: 11.5, color: 'var(--text-muted)' }}>{client.email}</p>
