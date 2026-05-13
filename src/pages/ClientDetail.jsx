@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Building2, Mail, Phone, Calendar, ArrowLeft, MoreVertical, 
   LayoutDashboard, Briefcase, CheckSquare, MessageSquare, 
-  DollarSign, History, Rocket, ShieldCheck, Zap 
+  DollarSign, History, ShieldCheck, Edit3, X, Loader2
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import ClientTimeline from '../components/ClientTimeline';
@@ -17,6 +17,9 @@ const ClientDetail = () => {
   const [client, setClient] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [editForm, setEditForm] = useState({});
   const [data, setData] = useState({ projects: [], tasks: [], meetings: [], interactions: [], payments: [] });
 
   useEffect(() => { if (id) fetchClientData(); }, [id]);
@@ -43,6 +46,33 @@ const ClientDetail = () => {
 
       setData({ projects: pRes.data || [], tasks: tRes.data || [], meetings: mRes.data || [], interactions: iRes.data || [], payments });
     } catch (e) { console.error(e); } finally { setLoading(false); }
+  };
+
+  const handleUpdateClient = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const { error } = await supabase.from('clients').update({
+        full_name: editForm.full_name,
+        email: editForm.email,
+        phone: editForm.phone,
+        company: editForm.company,
+        address: editForm.address,
+        status: editForm.status
+      }).eq('id', id);
+      if (error) throw error;
+      setClient({ ...client, ...editForm });
+      setShowEditModal(false);
+    } catch (e) {
+      alert('Update failed: ' + e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openEdit = () => {
+    setEditForm({ ...client });
+    setShowEditModal(true);
   };
 
   const handleDeleteClient = async () => {
@@ -103,6 +133,7 @@ const ClientDetail = () => {
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <span className="badge badge-slate" style={{ fontFamily: 'monospace' }}>ID: {id.slice(0, 8)}</span>
+          <button className="btn btn-secondary btn-sm" onClick={openEdit}><Edit3 size={14} /> Edit</button>
           <button className="btn btn-danger btn-sm" onClick={handleDeleteClient}>Delete Client</button>
         </div>
       </div>
@@ -269,6 +300,57 @@ const ClientDetail = () => {
           </motion.div>
         </AnimatePresence>
       </div>
+      <AnimatePresence>
+        {showEditModal && (
+          <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowEditModal(false)}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="modal-box max-w-lg">
+              <div className="modal-header">
+                <span className="modal-title">Edit Client Details</span>
+                <button onClick={() => setShowEditModal(false)} className="btn btn-ghost btn-icon"><X size={18} /></button>
+              </div>
+              <form onSubmit={handleUpdateClient}>
+                <div className="modal-body grid grid-cols-2 gap-4" style={{ maxHeight: 'calc(90vh - 140px)', overflowY: 'auto' }}>
+                  <div className="col-span-2">
+                    <label className="label">Full Name *</label>
+                    <input className="input" value={editForm.full_name} onChange={e => setEditForm({...editForm, full_name: e.target.value})} required />
+                  </div>
+                  <div>
+                    <label className="label">Email *</label>
+                    <input className="input" type="email" value={editForm.email} onChange={e => setEditForm({...editForm, email: e.target.value})} required />
+                  </div>
+                  <div>
+                    <label className="label">Phone</label>
+                    <input className="input" value={editForm.phone} onChange={e => setEditForm({...editForm, phone: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="label">Business Name</label>
+                    <input className="input" value={editForm.company} onChange={e => setEditForm({...editForm, company: e.target.value})} />
+                  </div>
+                  <div>
+                    <label className="label">Status</label>
+                    <select className="input" value={editForm.status} onChange={e => setEditForm({...editForm, status: e.target.value})}>
+                      <option value="Active">Active</option>
+                      <option value="Onboarding">Onboarding</option>
+                      <option value="At Risk">At Risk</option>
+                      <option value="Churned">Churned</option>
+                    </select>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="label">Business Address</label>
+                    <textarea className="input" rows={2} value={editForm.address} onChange={e => setEditForm({...editForm, address: e.target.value})} />
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button type="button" className="btn btn-secondary" onClick={() => setShowEditModal(false)}>Cancel</button>
+                  <button type="submit" className="btn btn-primary" disabled={saving}>
+                    {saving ? <Loader2 size={16} className="animate-spin" /> : 'Save Changes'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

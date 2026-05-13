@@ -118,7 +118,7 @@ const AddClientModal = ({ onClose, onSaved }) => {
                     <label className="label">Method</label>
                     <select className="input" value={form.payment_method} onChange={e => up('payment_method', e.target.value)}>
                       <option value="">Select Method...</option>
-                      <option value="Merchant Client">Merchant Client</option>
+                      <option value="Merchant Link">Merchant Link</option>
                       <option value="Visa">Visa Card</option>
                       <option value="MasterCard">MasterCard</option>
                       <option value="AMEX">American Express</option>
@@ -126,35 +126,39 @@ const AddClientModal = ({ onClose, onSaved }) => {
                       <option value="PayPal">PayPal</option>
                     </select>
                   </div>
-                  <div>
-                    <label className="label">Card Number</label>
-                    <input 
-                      className="input" 
-                      type="text"
-                      placeholder="XXXX XXXX XXXX XXXX"
-                      value={form.card_number}
-                      onChange={e => up('card_number', e.target.value.replace(/\D/g, '').slice(0, 16))}
-                    />
+                {form.payment_method !== 'PayPal' && form.payment_method !== 'Merchant Link' && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div>
+                      <label className="label">Card Number</label>
+                      <input 
+                        className="input" 
+                        type="text"
+                        placeholder="XXXX XXXX XXXX XXXX"
+                        value={form.card_number}
+                        onChange={e => up('card_number', e.target.value.replace(/\D/g, '').slice(0, 16))}
+                      />
+                    </div>
+                    <div>
+                      <label className="label">Expiry (MM/YY)</label>
+                      <input 
+                        className="input" 
+                        placeholder="12/28"
+                        value={form.card_expiry}
+                        onChange={e => up('card_expiry', e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <label className="label">CVV</label>
+                      <input 
+                        className="input" 
+                        type="password"
+                        placeholder="***"
+                        value={form.card_cvv}
+                        onChange={e => up('card_cvv', e.target.value.replace(/\D/g, '').slice(0, 4))}
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="label">Expiry (MM/YY)</label>
-                    <input 
-                      className="input" 
-                      placeholder="12/28"
-                      value={form.card_expiry}
-                      onChange={e => up('card_expiry', e.target.value)}
-                    />
-                  </div>
-                  <div>
-                    <label className="label">CVV</label>
-                    <input 
-                      className="input" 
-                      type="password"
-                      placeholder="***"
-                      value={form.card_cvv}
-                      onChange={e => up('card_cvv', e.target.value.replace(/\D/g, '').slice(0, 4))}
-                    />
-                  </div>
+                )}
                 </div>
               </div>
             )}

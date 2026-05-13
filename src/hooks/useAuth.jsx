@@ -105,18 +105,19 @@ export const AuthProvider = ({ children }) => {
     return data;
   };
 
-  const staffLogin = async (key, role) => {
+  const staffLogin = async (username, key, role) => {
     // 1. Verify key and role in staff_keys table
     const { data: keyData, error: keyError } = await supabase
       .from('staff_keys')
       .select('*')
+      .eq('username', username)
       .eq('key', key)
       .eq('role', role)
       .eq('is_active', true)
       .single();
 
     if (keyError || !keyData) {
-      throw new Error('Invalid 6-digit key or role selection.');
+      throw new Error('Invalid Username, Password, or Role selection.');
     }
 
     // 2. If valid, we need to sign them in. 

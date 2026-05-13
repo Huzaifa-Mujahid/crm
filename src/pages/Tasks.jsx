@@ -22,13 +22,13 @@ const Tasks = () => {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState('All');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEdit, setIsEdit] = useState(false);
   const [saving, setSaving] = useState(false);
   const [staffList, setStaffList] = useState([]);
   const [clients, setClients] = useState([]);
-  
+  const [activeTab, setActiveTab] = useState('Upcoming');
+
   const [newTask, setNewTask] = useState({
     id: null,
     title: '',
@@ -50,11 +50,9 @@ const Tasks = () => {
       fetchClients();
     }
 
-    // Handle Quick Action
     const params = new URLSearchParams(location.search);
     if (params.get('new') === 'true') {
       openAddTask();
-      // Clear the param from URL
       navigate(location.pathname, { replace: true });
     }
   }, [user, location.search]);
@@ -62,9 +60,8 @@ const Tasks = () => {
   const fetchTasks = async () => {
     try {
       setLoading(true);
-      let query = supabase.from('tasks').select('*, clients(full_name)').order('created_at', { ascending: false });
+      let query = supabase.from('tasks').select('*, clients(full_name)').order('due_date', { ascending: true });
       
-      // If not Admin/Manager, only see assigned tasks
       if (!isAdmin && !isManager) {
         query = query.eq('assigned_to', user.id);
       }
@@ -143,7 +140,7 @@ const Tasks = () => {
   };
 
   const handleDeleteTask = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this task?')) return;
+    if (!window.confirm('Delete this task?')) return;
     try {
       const { error } = await supabase.from('tasks').delete().eq('id', id);
       if (error) throw error;
@@ -161,97 +158,119 @@ const Tasks = () => {
 
   const filteredTasks = tasks.filter(t => {
     const matchesSearch = t.title.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = filterStatus === 'All' || t.status === filterStatus;
-    return matchesSearch && matchesStatus;
+    const isCompleted = t.status === 'Completed';
+    const matchesTab = activeTab === 'Upcoming' ? !isCompleted : isCompleted;
+    return matchesSearch && matchesTab;
   });
 
   return (
     <div className="animate-in" style={{ paddingBottom: 40 }}>
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+      <div className="page-header" style={{ marginBottom: 28 }}>
         <div>
           <h1 className="page-title">Task Management</h1>
           <p className="page-subtitle">Track and assign workflow responsibilities</p>
         </div>
-        <button onClick={openAddTask} className="btn btn-primary flex items-center gap-2">
-          <Plus size={16} />
-          <span>Create Task</span>
+        <button onClick={openAddTask} className="btn btn-primary">
+          <Plus size={15} /> Create Task
         </button>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col md:flex-row gap-4 mb-6">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
-          <input 
-            type="text" 
-            placeholder="Search tasks..." 
-            className="input input-icon w-full"
-            value={searchQuery}
-            onChange={e => setSearchQuery(e.target.value)}
-          />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20, marginBottom: 24 }}>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div className="tabs">
+            {['Upcoming', 'Past'].map(t => (
+              <button key={t} className={`tab-btn ${activeTab === t ? 'active' : ''}`} onClick={() => setActiveTab(t)}>
+                {t}
+                <span style={{ fontSize: 11, background: activeTab === t ? 'rgba(99,102,241,0.15)' : 'var(--bg-elevated)', color: activeTab === t ? 'var(--accent-light)' : 'var(--text-muted)', padding: '1px 7px', borderRadius: 99, fontWeight: 700, border: '1px solid var(--border)', marginLeft: 6 }}>
+                  {tasks.filter(task => { const isCompleted = task.status === 'Completed'; return t === 'Upcoming' ? !isCompleted : isCompleted; }).length}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div style={{ position: 'relative', width: '100%', maxWidth: 300 }}>
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={15} />
+            <input 
+              type="text" 
+              placeholder="Search tasks..." 
+              className="input input-icon w-full"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+            />
+          </div>
         </div>
-        <select 
-          className="input md:w-48"
-          value={filterStatus}
-          onChange={e => setFilterStatus(e.target.value)}
-        >
-          <option value="All">All Status</option>
-          <option value="Pending">Pending</option>
-          <option value="In Progress">In Progress</option>
-          <option value="Completed">Completed</option>
-        </select>
       </div>
 
-      {/* Task List */}
-      <div className="grid grid-cols-1 gap-4">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 14 }}>
         {loading ? (
-          <div className="flex justify-center p-20"><Loader2 className="animate-spin text-indigo-500" size={32} /></div>
+          <div style={{ gridColumn: '1/-1', padding: 40, textAlign: 'center' }}><Loader2 className="animate-spin text-indigo-500" size={32} style={{ margin: '0 auto' }} /></div>
         ) : filteredTasks.length === 0 ? (
-          <div className="card p-20 text-center text-slate-500">No tasks found.</div>
-        ) : (
-          filteredTasks.map(task => (
-            <div key={task.id} className={`card p-4 flex items-center gap-4 hover:border-indigo-500/30 transition-all ${task.status === 'Completed' ? 'opacity-60' : ''}`}>
-              <button 
-                onClick={() => toggleTaskStatus(task.id, task.status)}
-                className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-colors ${
-                  task.status === 'Completed' ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-700 hover:border-indigo-500'
-                }`}
-              >
-                {task.status === 'Completed' && <CheckCircle2 size={14} />}
-              </button>
-              
-              <div className="flex-1">
-                <div className="flex items-center gap-3 mb-1">
-                  <h3 className={`font-bold text-sm ${task.status === 'Completed' ? 'line-through text-slate-500' : 'text-white'}`}>
-                    {task.title}
-                  </h3>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${PRIORITY_COLORS[task.priority]}`}>
-                    {task.priority}
-                  </span>
-                </div>
-                <div className="flex items-center gap-4 text-xs text-slate-500">
-                  <span className="flex items-center gap-1.5"><User size={12} /> {task.clients?.full_name || 'General Task'}</span>
-                  {task.duration && <span className="flex items-center gap-1.5"><Clock size={12} /> {task.duration}</span>}
-                  {task.due_date && <span className="flex items-center gap-1.5"><Calendar size={12} /> {new Date(task.due_date).toLocaleDateString()}</span>}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <div className="text-right hidden md:block mr-2">
-                  <p className="text-[10px] font-bold text-slate-500 uppercase">Assigned To</p>
-                  <p className="text-xs text-indigo-400 font-semibold">
-                    {task.assigned_to === user.id ? 'You' : (staffList.find(s => s.user_id === task.assigned_to)?.full_name || 'Member')}
-                  </p>
-                </div>
-                <button onClick={() => openEditTask(task)} className="p-2 text-slate-500 hover:text-indigo-400 transition-colors" title="Edit Task">
-                  <Edit3 size={16} />
-                </button>
-                <button onClick={() => handleDeleteTask(task.id)} className="p-2 text-slate-500 hover:text-rose-400 transition-colors" title="Delete Task">
-                  <Trash2 size={16} />
-                </button>
-              </div>
+          <div className="card" style={{ gridColumn: '1/-1' }}>
+            <div className="empty-state">
+              <div className="empty-icon"><CheckSquare size={22} /></div>
+              <p className="empty-title">No {activeTab.toLowerCase()} tasks</p>
+              <p className="empty-desc">{activeTab === 'Upcoming' ? 'Everything caught up! Create a task to get started.' : 'Completed tasks will appear here.'}</p>
             </div>
-          ))
+          </div>
+        ) : (
+          filteredTasks.map((task, i) => {
+            const isCompleted = task.status === 'Completed';
+            const isOverdue = task.due_date && new Date(task.due_date) < new Date() && !isCompleted;
+            return (
+              <motion.div key={task.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }} className="card"
+                style={{ padding: 20, borderColor: isOverdue ? 'rgba(244,63,94,0.25)' : undefined }}>
+                
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
+                    <div style={{ width: 40, height: 40, borderRadius: 10, background: isCompleted ? 'rgba(100,116,139,0.1)' : 'rgba(99,102,241,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: isCompleted ? '#64748b' : 'var(--accent-light)', flexShrink: 0 }}>
+                      <CheckSquare size={18} />
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <p style={{ fontSize: 14, fontWeight: 700, color: isCompleted ? 'var(--text-muted)' : 'var(--text-primary)', textDecoration: isCompleted ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.title}</p>
+                      <p style={{ fontSize: 12, color: 'var(--accent-light)', fontWeight: 600 }}>{task.clients?.full_name || 'Internal'}</p>
+                    </div>
+                  </div>
+                  <button onClick={() => toggleTaskStatus(task.id, task.status)} style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: isCompleted ? 'var(--emerald)' : 'var(--bg-elevated)', color: isCompleted ? '#fff' : 'var(--text-muted)', flexShrink: 0, marginLeft: 8 }} title="Mark as complete">
+                    <CheckCircle2 size={14} />
+                  </button>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <Calendar size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                    <div>
+                      <p style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Due Date</p>
+                      <p style={{ fontSize: 12, color: isOverdue ? 'var(--rose)' : 'var(--text-secondary)', fontWeight: 600 }}>{task.due_date ? new Date(task.due_date).toLocaleDateString() : 'No Deadline'}</p>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <Tag size={13} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                    <div>
+                      <p style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Priority</p>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: task.priority === 'High' || task.priority === 'Urgent' ? 'var(--rose)' : 'var(--accent-light)' }}>{task.priority}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--bg-elevated)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, color: 'var(--text-muted)' }}>
+                      {task.assigned_to === user.id ? 'ME' : (staffList.find(s => s.user_id === task.assigned_to)?.full_name?.[0] || '?')}
+                    </div>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>{task.assigned_to === user.id ? 'Assigned to You' : (staffList.find(s => s.user_id === task.assigned_to)?.full_name || 'Member')}</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <button className="btn btn-ghost btn-icon" onClick={() => openEditTask(task)} title="Edit"><Edit3 size={14} /></button>
+                    <button className="btn btn-ghost btn-icon" onClick={() => handleDeleteTask(task.id)} title="Delete" style={{ color: 'var(--text-muted)' }}
+                      onMouseEnter={e => e.currentTarget.style.color = 'var(--rose)'}
+                      onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })
         )}
       </div>
 
@@ -265,7 +284,7 @@ const Tasks = () => {
                 <button onClick={() => setIsModalOpen(false)} className="text-slate-500 hover:text-white"><X size={18} /></button>
               </div>
               <form onSubmit={handleCreateTask}>
-                <div className="modal-body grid grid-cols-2 gap-4">
+                <div className="modal-body grid grid-cols-2 gap-4" style={{ maxHeight: 'calc(90vh - 140px)', overflowY: 'auto', paddingRight: 8 }}>
                   <div className="col-span-2">
                     <label className="label">Task Title</label>
                     <input className="input" placeholder="e.g. Weekly Report Preparation" value={newTask.title} onChange={e => setNewTask({...newTask, title: e.target.value})} required />

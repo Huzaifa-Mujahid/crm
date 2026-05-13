@@ -13,6 +13,7 @@ const Login = () => {
   const [activeTab, setActiveTab] = useState('admin'); // 'admin' or 'staff'
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [staffUsername, setStaffUsername] = useState('');
   const [staffKey, setStaffKey] = useState('');
   const [staffRole, setStaffRole] = useState('Sales Agent');
   const [showPass, setShowPass] = useState(false);
@@ -37,17 +38,17 @@ const Login = () => {
 
   const handleStaffLogin = async (e) => {
     e.preventDefault();
-    if (staffKey.length !== 6) {
-      setError('Key must be exactly 6 digits.');
+    if (!staffUsername || !staffKey) {
+      setError('Please enter both username and password.');
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      await staffLogin(staffKey, staffRole);
+      await staffLogin(staffUsername, staffKey, staffRole);
       navigate('/');
     } catch (err) {
-      setError(err.message || 'Invalid key or role.');
+      setError(err.message || 'Invalid username, password or role.');
     } finally {
       setLoading(false);
     }
@@ -216,21 +217,36 @@ const Login = () => {
                 </div>
 
                 <div className="form-group">
-                  <label className="label">6-Digit Staff Key</label>
+                  <label className="label">Username</label>
+                  <div style={{ position: 'relative' }}>
+                    <Shield size={15} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                    <input
+                      type="text"
+                      className="input input-icon"
+                      value={staffUsername}
+                      onChange={e => setStaffUsername(e.target.value.toLowerCase().replace(/\s/g, ''))}
+                      placeholder="Your username"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="label">Password (6-Digit Key)</label>
                   <div style={{ position: 'relative' }}>
                     <Key size={15} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                     <input
-                      type="text"
+                      type="password"
                       maxLength={6}
                       className="input input-icon"
                       value={staffKey}
                       onChange={e => setStaffKey(e.target.value.replace(/\D/g, ''))}
-                      placeholder="000000"
+                      placeholder="••••••"
                       required
                       style={{ letterSpacing: staffKey ? '4px' : 'normal', fontWeight: 700 }}
                     />
                   </div>
-                  <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>Enter the unique key provided by your Admin.</p>
+                  <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>Enter the secure key provided by your Admin.</p>
                 </div>
 
                 <button type="submit" disabled={loading} className="btn btn-primary" style={{ width: '100%', height: 46, marginTop: 6 }}>

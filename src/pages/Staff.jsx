@@ -19,7 +19,7 @@ const Staff = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEdit, setIsEdit] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [newStaff, setNewStaff] = useState({ id: null, full_name: '', role: 'Sales Agent', key: '' });
+  const [newStaff, setNewStaff] = useState({ id: null, full_name: '', username: '', role: 'Sales Agent', key: '' });
   const [error, setError] = useState(null);
 
   useEffect(() => {
@@ -45,7 +45,7 @@ const Staff = () => {
 
   const openAdd = () => {
     setIsEdit(false);
-    setNewStaff({ id: null, full_name: '', role: 'Sales Agent', key: '' });
+    setNewStaff({ id: null, full_name: '', username: '', role: 'Sales Agent', key: '' });
     setError(null);
     setIsModalOpen(true);
     generateKey();
@@ -56,6 +56,7 @@ const Staff = () => {
     setNewStaff({ 
       id: staffKey.id, 
       full_name: staffKey.full_name, 
+      username: staffKey.username || '',
       role: staffKey.role, 
       key: staffKey.key 
     });
@@ -78,6 +79,7 @@ const Staff = () => {
       setError(null);
       const payload = {
         full_name: newStaff.full_name,
+        username: newStaff.username,
         role: newStaff.role,
         key: newStaff.key,
         created_by: user.id
@@ -266,6 +268,16 @@ const Staff = () => {
                       placeholder="e.g. Sarah Connor" 
                       value={newStaff.full_name}
                       onChange={e => setNewStaff({ ...newStaff, full_name: e.target.value })}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="label">Username</label>
+                    <input 
+                      className="input" 
+                      placeholder="e.g. sarah_c" 
+                      value={newStaff.username}
+                      onChange={e => setNewStaff({ ...newStaff, username: e.target.value.toLowerCase().replace(/\s/g, '') })}
                       required
                     />
                   </div>
