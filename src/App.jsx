@@ -23,7 +23,7 @@ const ProtectedRoute = ({ children }) => {
     <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#07090f', color: 'white' }}>
       <div style={{ textAlign: 'center' }}>
         <Loader2 className="animate-spin" style={{ margin: '0 auto 16px', color: '#6366f1' }} size={32} />
-        <p style={{ fontSize: 14, color: '#4b5a72' }}>Initializing ClientFlow...</p>
+        <p style={{ fontSize: 14, color: '#4b5a72' }}>Initializing Allied Marketing Solutions...</p>
       </div>
     </div>
   );

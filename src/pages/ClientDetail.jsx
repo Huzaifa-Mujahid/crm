@@ -123,7 +123,7 @@ const ClientDetail = () => {
           
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginTop: 24 }}>
             {[
-              [Building2, 'Company', client.company || '—'],
+              [Building2, 'Business Name', client.company || '—'],
               [Mail, 'Email', client.email],
               [Phone, 'Phone', client.phone || '—'],
               [Calendar, 'Added', new Date(client.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })],
@@ -138,6 +138,17 @@ const ClientDetail = () => {
                 </div>
               </div>
             ))}
+            {client.address && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, gridColumn: 'span 2' }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--bg-elevated)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                  <Building2 size={14} />
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Business Address</p>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{client.address}</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

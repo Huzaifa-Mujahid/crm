@@ -50,7 +50,7 @@ const avatarColor = (email) => AVATAR_COLORS[(email?.charCodeAt(0) ?? 0) % AVATA
 
 /* ── Sidebar Component ─────────────────────────────────────────── */
 const Sidebar = ({ open, onClose }) => {
-  const { user, role, signOut } = useAuth();
+  const { user, role, signOut, isAdmin } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -128,24 +128,26 @@ const Sidebar = ({ open, onClose }) => {
             );
           })}
 
-          {/* Quick Actions for Staff/Admin */}
-          <div style={{ marginTop: 24, padding: '0 10px' }}>
-            <p className="nav-group-label" style={{ marginBottom: 12 }}>Quick Actions</p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <NavLink to="/clients?new=true" className="quick-action-btn">
-                <Users size={14} />
-                <span>+ Add Client</span>
-              </NavLink>
-              <NavLink to="/tasks?new=true" className="quick-action-btn">
-                <CheckSquare size={14} />
-                <span>+ New Task</span>
-              </NavLink>
-              <NavLink to="/meetings?new=true" className="quick-action-btn">
-                <Calendar size={14} />
-                <span>+ Schedule Meeting</span>
-              </NavLink>
+          {/* Quick Actions for Staff */}
+          {!isAdmin && (
+            <div style={{ marginTop: 24, padding: '0 10px' }}>
+              <p className="nav-group-label" style={{ marginBottom: 12 }}>Quick Actions</p>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <NavLink to="/clients?new=true" className="quick-action-btn">
+                  <Users size={14} />
+                  <span>+ Add Client</span>
+                </NavLink>
+                <NavLink to="/tasks?new=true" className="quick-action-btn">
+                  <CheckSquare size={14} />
+                  <span>+ New Task</span>
+                </NavLink>
+                <NavLink to="/meetings?new=true" className="quick-action-btn">
+                  <Calendar size={14} />
+                  <span>+ Schedule Meeting</span>
+                </NavLink>
+              </div>
             </div>
-          </div>
+          )}
         </nav>
 
         {/* User footer */}

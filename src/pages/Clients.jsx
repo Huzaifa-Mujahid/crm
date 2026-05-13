@@ -27,6 +27,7 @@ const AddClientModal = ({ onClose, onSaved }) => {
     email: '', 
     phone: '', 
     company: '', 
+    address: '', 
     status: 'Active', 
     assigned_to: '',
     payment_method: '',
@@ -85,8 +86,9 @@ const AddClientModal = ({ onClose, onSaved }) => {
             <div><label className="label">Email *</label><input className="input" type="email" value={form.email} onChange={e => up('email', e.target.value)} placeholder="john@company.com" required /></div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div><label className="label">Phone</label><input className="input" value={form.phone} onChange={e => up('phone', e.target.value)} placeholder="+1 (555) 000-0000" /></div>
-              <div><label className="label">Company</label><input className="input" value={form.company} onChange={e => up('company', e.target.value)} placeholder="Acme Inc." /></div>
+              <div><label className="label">Business Name</label><input className="input" value={form.company} onChange={e => up('company', e.target.value)} placeholder="Acme Inc." /></div>
             </div>
+            <div><label className="label">Business Address</label><input className="input" value={form.address} onChange={e => up('address', e.target.value)} placeholder="123 Street, City, Country" /></div>
             
             {(isAdmin || isManager) && (
               <div>
@@ -171,6 +173,7 @@ const AddClientModal = ({ onClose, onSaved }) => {
 
 /* ── Clients Page ─────────────────────────────────────────────── */
 const Clients = () => {
+  const { isAdmin } = useAuth();
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -254,7 +257,7 @@ const Clients = () => {
               <thead>
                 <tr>
                   <th>Client</th>
-                  <th>Company</th>
+                  <th>Business Name</th>
                   <th>Payment</th>
                   <th>Status</th>
                   <th>Health Score</th>

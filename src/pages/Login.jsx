@@ -82,7 +82,7 @@ const Login = () => {
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <img src="/logo.png" alt="Company Logo" style={{ width: 'auto', height: 60, maxWidth: '100%', objectFit: 'contain', margin: '0 auto 16px' }} />
           <h1 style={{ fontSize: 24, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.03em', marginBottom: 4 }}>
-            ClientFlow CRM
+            Allied Marketing Solutions
           </h1>
           <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
             Enterprise Client Management System
@@ -243,7 +243,7 @@ const Login = () => {
 
         {/* Footer */}
         <p style={{ textAlign: 'center', marginTop: 32, fontSize: 12, color: 'var(--text-muted)', opacity: 0.7 }}>
-          ClientFlow CRM Platform · Secure Access Point
+          Allied Marketing Solutions Platform · Secure Access Point
         </p>
       </motion.div>
     </div>

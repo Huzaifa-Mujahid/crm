@@ -161,7 +161,7 @@ const Interactions = () => {
 
       {loading ? (
         <div className="empty-state"><div className="spinner" /><p style={{ marginTop: 14, fontSize: 13, color: 'var(--text-muted)' }}>Loading timeline…</p></div>
-      ) : filtered.length === 0 ? (
+      ) : (!interactions || filtered.length === 0) ? (
         <div className="card">
           <div className="empty-state">
             <div className="empty-icon"><MessageSquare size={22} /></div>
@@ -196,7 +196,7 @@ const Interactions = () => {
                       </div>
                       <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 5 }}>
                         <Clock size={12} />
-                        {new Date(item.interaction_date).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        {item.interaction_date ? new Date(item.interaction_date).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Recent'}
                       </span>
                     </div>
                     

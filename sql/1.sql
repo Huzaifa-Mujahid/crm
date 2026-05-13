@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS public.clients (
     email         text UNIQUE,
     phone         text,
     company       text,
+    address       text,
     status        text NOT NULL DEFAULT 'Lead' CHECK (status IN ('Lead', 'Active', 'Inactive', 'Churned')),
     health_score  int NOT NULL DEFAULT 100 CHECK (health_score >= 0 AND health_score <= 100),
     created_at    timestamptz DEFAULT now(),

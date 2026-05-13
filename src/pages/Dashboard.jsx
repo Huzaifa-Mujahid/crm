@@ -79,7 +79,7 @@ const Dashboard = () => {
       let projectsQuery = supabase.from('projects').select('*', { count: 'exact', head: true });
       let paymentsQuery = supabase.from('payments').select('amount, payment_date, is_paid, due_date').eq('is_paid', true);
       let overdueQuery = supabase.from('payments').select('*', { count: 'exact', head: true }).eq('is_paid', false).lt('due_date', nowStr);
-      let tasksQuery = supabase.from('tasks').select('*, clients(full_name)').order('due_date', { ascending: true }).limit(5);
+      let tasksQuery = supabase.from('tasks').select('*, clients(full_name), assignee:user_roles!tasks_assigned_to_fkey(full_name)').order('due_date', { ascending: true }).limit(5);
 
       // Filtering for staff
       if (isStaff) {
@@ -153,9 +153,15 @@ const Dashboard = () => {
 
   return (
     <div className="animate-in" style={{ paddingBottom: 40 }}>
-      <div style={{ marginBottom: 28 }}>
-        <h1 className="page-title">Dashboard</h1>
-        <p className="page-subtitle">Overview of your business performance</p>
+      <div style={{ marginBottom: 28, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div>
+          <h1 className="page-title">Welcome back, {user?.user_metadata?.full_name ? user.user_metadata.full_name.split(' ')[0] : 'User'}!</h1>
+          <p className="page-subtitle">Here is what's happening with your accounts today.</p>
+        </div>
+        <div style={{ padding: '8px 16px', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--emerald)' }} />
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>System Active</span>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 14, marginBottom: 20 }}>
@@ -166,42 +172,44 @@ const Dashboard = () => {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, marginBottom: 16 }} className="dash-grid">
-        <div className="card" style={{ padding: 24 }}>
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 22 }}>
-            <div>
-              <p className="section-title">Revenue Overview</p>
-              <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>Real collected revenue over last 6 months</p>
-            </div>
-            <div style={{ display: 'flex', gap: 14 }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: 'var(--text-muted)' }}>
-                <span style={{ width: 8, height: 8, borderRadius: 2, background: '#6366f1', display: 'inline-block' }} />Revenue
-              </span>
-            </div>
-          </div>
-          <div style={{ height: 240 }}>
-            {revChartData.reduce((s, x) => s + x.revenue, 0) === 0 ? (
-              <div className="empty-state" style={{ height: '100%', padding: 0 }}>
-                 <p className="empty-desc">No revenue collected in the last 6 months.</p>
+        {(isAdmin || isManager) && (
+          <div className="card" style={{ padding: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 22 }}>
+              <div>
+                <p className="section-title">Revenue Overview</p>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>Real collected revenue over last 6 months</p>
               </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={revChartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="rg" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#6366f1" stopOpacity={0.22} />
-                      <stop offset="100%" stopColor="#6366f1" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip contentStyle={TTStyle} formatter={(v) => [`$${v.toLocaleString()}`, 'Revenue']} />
-                  <Area type="monotone" dataKey="revenue" stroke="#6366f1" strokeWidth={2.5} fill="url(#rg)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            )}
+              <div style={{ display: 'flex', gap: 14 }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: 'var(--text-muted)' }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 2, background: '#6366f1', display: 'inline-block' }} />Revenue
+                </span>
+              </div>
+            </div>
+            <div style={{ height: 240 }}>
+              {revChartData.reduce((s, x) => s + x.revenue, 0) === 0 ? (
+                <div className="empty-state" style={{ height: '100%', padding: 0 }}>
+                   <p className="empty-desc">No revenue collected in the last 6 months.</p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={revChartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="rg" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#6366f1" stopOpacity={0.22} />
+                        <stop offset="100%" stopColor="#6366f1" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} />
+                    <Tooltip contentStyle={TTStyle} formatter={(v) => [`$${v.toLocaleString()}`, 'Revenue']} />
+                    <Area type="monotone" dataKey="revenue" stroke="#6366f1" strokeWidth={2.5} fill="url(#rg)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="card" style={{ padding: 24 }}>
           <p className="section-title" style={{ marginBottom: 18 }}>Project Status</p>
@@ -241,7 +249,7 @@ const Dashboard = () => {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, marginBottom: 16 }} className="dash-grid">
         <div className="card" style={{ padding: 24 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-            <p className="section-title">My Assigned Tasks</p>
+            <p className="section-title">{isAdmin ? 'Recent Team Tasks' : 'My Assigned Tasks'}</p>
             <button onClick={() => navigate('/projects')} className="text-xs text-indigo-400 font-semibold hover:underline">View All</button>
           </div>
           
@@ -264,7 +272,15 @@ const Dashboard = () => {
                     }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.title}</p>
-                      <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>{task.clients?.full_name || 'No Client'}</p>
+                      <p style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                        {task.clients?.full_name || 'No Client'} 
+                        {isAdmin && task.assignee?.full_name && (
+                          <>
+                            <span style={{ width: 3, height: 3, borderRadius: '50%', background: 'var(--border)' }} />
+                            <span style={{ color: 'var(--accent-light)', fontWeight: 600 }}>to {task.assignee.full_name}</span>
+                          </>
+                        )}
+                      </p>
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)' }}>{task.due_date ? new Date(task.due_date).toLocaleDateString() : 'No Date'}</p>
@@ -277,15 +293,17 @@ const Dashboard = () => {
           </div>
         </div>
 
-        <div className="card" style={{ padding: 24 }}>
-          <p className="section-title" style={{ marginBottom: 14 }}>Quick Actions</p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <QuickAction icon={Users}         label="Clients"      desc="View your database"   path="/clients"      color="indigo" />
-            <QuickAction icon={Briefcase}     label="Projects"     desc="Track status"     path="/projects"     color="blue" />
-            <QuickAction icon={Calendar}      label="Meetings"    desc="Book appointments"         path="/meetings"     color="emerald" />
-            <QuickAction icon={MessageSquare} label="Log Interaction"     desc="Record comms"         path="/interactions" color="amber" />
+        {!isAdmin && (
+          <div className="card" style={{ padding: 24 }}>
+            <p className="section-title" style={{ marginBottom: 14 }}>Quick Actions</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <QuickAction icon={Users}         label="Clients"      desc="View your database"   path="/clients"      color="indigo" />
+              <QuickAction icon={Briefcase}     label="Projects"     desc="Track status"     path="/projects"     color="blue" />
+              <QuickAction icon={Calendar}      label="Meetings"    desc="Book appointments"         path="/meetings"     color="emerald" />
+              <QuickAction icon={MessageSquare} label="Log Interaction"     desc="Record comms"         path="/interactions" color="amber" />
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       <style>{`@media(max-width:900px){.dash-grid{grid-template-columns:1fr !important;}}`}</style>
