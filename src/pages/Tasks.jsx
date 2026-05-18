@@ -325,8 +325,8 @@ const Tasks = () => {
                     <label className="label">Assign To</label>
                     {isAdmin || isManager ? (
                       <select className="input" value={newTask.assigned_to} onChange={e => setNewTask({...newTask, assigned_to: e.target.value})}>
-                        <option value="">Assign to Me</option>
-                        {staffList.map(s => <option key={s.user_id} value={s.user_id}>{s.full_name} ({s.role})</option>)}
+                        <option value="">Assign to Admin</option>
+                        {staffList.filter(s => s.user_id !== user.id).map(s => <option key={s.user_id} value={s.user_id}>{s.full_name} ({s.role})</option>)}
                       </select>
                     ) : (
                       <input className="input" value={user?.user_metadata?.full_name || 'Me'} disabled style={{ opacity: 0.7 }} />

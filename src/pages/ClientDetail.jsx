@@ -16,7 +16,7 @@ const STATUS_BADGE = { Active: 'badge-emerald', Onboarding: 'badge-blue', 'At Ri
 const ClientDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { isAdmin, isManager } = useAuth();
+  const { user, isAdmin, isManager } = useAuth();
   const [client, setClient] = useState(null);
   const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -28,21 +28,40 @@ const ClientDetail = () => {
 
   const [revealedCard, setRevealedCard] = useState({ number: false });
   const [decryptedCard, setDecryptedCard] = useState({ number: '' });
-
-  const handleRevealCard = async (field) => {
-    try {
-      const val = await decryptCard(client.card_number_enc);
-      if (val) {
-        setDecryptedCard(prev => ({ ...prev, [field]: val }));
-        setRevealedCard(prev => ({ ...prev, [field]: true }));
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  };
+  const [showReAuthModal, setShowReAuthModal] = useState(false);
+  const [authPassword, setAuthPassword] = useState('');
+  const [authError, setAuthError] = useState('');
+  const [verifying, setVerifying] = useState(false);
 
   const handleHideCard = (field) => {
     setRevealedCard(prev => ({ ...prev, [field]: false }));
+  };
+
+  const handleVerifyAndReveal = async (e) => {
+    e.preventDefault();
+    setVerifying(true);
+    setAuthError('');
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email: user.email,
+        password: authPassword
+      });
+      if (error) throw new Error("Incorrect password. Access denied.");
+      
+      const val = await decryptCard(client.card_number_enc);
+      if (val) {
+        setDecryptedCard(prev => ({ ...prev, number: val }));
+        setRevealedCard(prev => ({ ...prev, number: true }));
+        setShowReAuthModal(false);
+        setAuthPassword('');
+      } else {
+        throw new Error("Failed to decrypt card details.");
+      }
+    } catch (err) {
+      setAuthError(err.message);
+    } finally {
+      setVerifying(false);
+    }
   };
 
   const getHealthScore = () => {
@@ -282,18 +301,16 @@ const ClientDetail = () => {
           )}
 
           {/* Masked Card Display — Admin only reveal */}
-          {client.card_number && (
+          {isAdmin && client.card_number && (
             <div style={{ textAlign: 'center', borderTop: '1px solid var(--border)', paddingTop: 12 }}>
               <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Card</p>
               <p style={{ fontSize: 11, fontFamily: 'monospace', color: 'var(--text-secondary)', marginBottom: 4 }}>
                 {revealedCard.number ? decryptedCard.number : `**** **** **** ${client.card_number?.slice(-4)}`}
               </p>
-              {isAdmin && (
-                <button onClick={() => revealedCard.number ? handleHideCard('number') : handleRevealCard('number')}
-                  style={{ fontSize: 10, fontWeight: 700, color: revealedCard.number ? 'var(--rose)' : 'var(--accent-light)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
-                  {revealedCard.number ? 'Hide' : '🔓 Reveal'}
-                </button>
-              )}
+              <button onClick={() => revealedCard.number ? handleHideCard('number') : setShowReAuthModal(true)}
+                style={{ fontSize: 10, fontWeight: 700, color: revealedCard.number ? 'var(--rose)' : 'var(--accent-light)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
+                {revealedCard.number ? 'Hide' : '🔓 Reveal'}
+              </button>
             </div>
           )}
         </div>
@@ -482,6 +499,54 @@ const ClientDetail = () => {
                   <button type="button" className="btn btn-secondary" onClick={() => setShowEditModal(false)}>Cancel</button>
                   <button type="submit" className="btn btn-primary" disabled={saving}>
                     {saving ? <Loader2 size={16} className="animate-spin" /> : 'Save Changes'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showReAuthModal && (
+          <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowReAuthModal(false)}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="modal-box max-w-sm" style={{ padding: 24 }}>
+              <div style={{ textAlign: 'center', marginBottom: 16 }}>
+                <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(99,102,241,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-light)', margin: '0 auto 12px auto' }}>
+                  <ShieldCheck size={24} />
+                </div>
+                <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 6px 0' }}>Security Verification</h3>
+                <p style={{ fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.4, margin: 0 }}>
+                  Enter your password to reveal decrypted card details.
+                </p>
+              </div>
+
+              <form onSubmit={handleVerifyAndReveal}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
+                  <div>
+                    <input 
+                      type="password" 
+                      className="input" 
+                      placeholder="Confirm your password" 
+                      value={authPassword} 
+                      onChange={e => setAuthPassword(e.target.value)} 
+                      required 
+                      autoFocus
+                    />
+                  </div>
+                  {authError && (
+                    <p style={{ fontSize: 12, color: 'var(--rose)', fontWeight: 600, margin: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      ⚠️ {authError}
+                    </p>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setShowReAuthModal(false); setAuthPassword(''); setAuthError(''); }}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn btn-primary btn-sm" disabled={verifying}>
+                    {verifying ? <Loader2 size={13} className="animate-spin" /> : 'Confirm & Reveal'}
                   </button>
                 </div>
               </form>
