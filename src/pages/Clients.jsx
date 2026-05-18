@@ -34,7 +34,8 @@ const av = (name) => { const i = (name?.charCodeAt(0) || 0) % 5; return [AVATAR_
 const AddClientModal = ({ onClose, onSaved }) => {
   const { user, isAdmin, isManager, role } = useAuth();
   const isCS = role === 'Customer Success Manager';
-  const canHandlePayment = isAdmin || isManager || isCS;
+  const isCloser = role === 'Sales Closer';
+  const canHandlePayment = isAdmin || isManager || isCS || isCloser;
   const [customService, setCustomService] = useState(false);
 
   const [form, setForm] = useState({ 
