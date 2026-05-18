@@ -32,9 +32,20 @@ const ClientDetail = () => {
   const [authPassword, setAuthPassword] = useState('');
   const [authError, setAuthError] = useState('');
   const [verifying, setVerifying] = useState(false);
+  const [decryptedCvv, setDecryptedCvv] = useState('');
+  const [copied, setCopied] = useState(false);
 
   const handleHideCard = (field) => {
     setRevealedCard(prev => ({ ...prev, [field]: false }));
+    setDecryptedCvv('');
+    setCopied(false);
+  };
+
+  const handleCopyCvv = () => {
+    if (!decryptedCvv) return;
+    navigator.clipboard.writeText(decryptedCvv);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleVerifyAndReveal = async (e) => {
@@ -48,9 +59,12 @@ const ClientDetail = () => {
       });
       if (error) throw new Error("Incorrect password. Access denied.");
       
-      const val = await decryptCard(client.card_number_enc);
-      if (val) {
-        setDecryptedCard(prev => ({ ...prev, number: val }));
+      const numVal = await decryptCard(client.card_number_enc);
+      const cvvVal = client.card_cvv ? await decryptCard(client.card_cvv) : '';
+      
+      if (numVal) {
+        setDecryptedCard(prev => ({ ...prev, number: numVal }));
+        setDecryptedCvv(cvvVal);
         setRevealedCard(prev => ({ ...prev, number: true }));
         setShowReAuthModal(false);
         setAuthPassword('');
@@ -307,6 +321,19 @@ const ClientDetail = () => {
               <p style={{ fontSize: 11, fontFamily: 'monospace', color: 'var(--text-secondary)', marginBottom: 4 }}>
                 {revealedCard.number ? decryptedCard.number : `**** **** **** ${client.card_number?.slice(-4)}`}
               </p>
+              
+              {revealedCard.number && client.card_cvv && (
+                <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, marginBottom: 8 }}>
+                  <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>CVV</p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <span style={{ fontSize: 12, fontFamily: 'monospace', color: 'var(--text-secondary)' }}>***</span>
+                    <button onClick={handleCopyCvv} style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 6, background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: copied ? 'var(--emerald)' : 'var(--text-secondary)', cursor: 'pointer', transition: 'all 0.2s ease', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      {copied ? '✓ Copied' : '📋 Copy CVV'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <button onClick={() => revealedCard.number ? handleHideCard('number') : setShowReAuthModal(true)}
                 style={{ fontSize: 10, fontWeight: 700, color: revealedCard.number ? 'var(--rose)' : 'var(--accent-light)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
                 {revealedCard.number ? 'Hide' : '🔓 Reveal'}
