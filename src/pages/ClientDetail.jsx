@@ -2,19 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Building2, Mail, Phone, Calendar, ArrowLeft, MoreVertical, 
+  Building2, Mail, Phone, Calendar, ArrowLeft, MoreVertical, Users, 
   LayoutDashboard, Briefcase, CheckSquare, MessageSquare, 
   DollarSign, History, ShieldCheck, Edit3, X, Loader2
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import ClientTimeline from '../components/ClientTimeline';
+import { useAuth } from '../hooks/useAuth';
+import { decryptCard } from '../lib/cardCrypto';
 
 const STATUS_BADGE = { Active: 'badge-emerald', Onboarding: 'badge-blue', 'At Risk': 'badge-amber', Churned: 'badge-rose' };
 
 const ClientDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { isAdmin, isManager } = useAuth();
   const [client, setClient] = useState(null);
+  const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
   const [showEditModal, setShowEditModal] = useState(false);
@@ -22,11 +26,63 @@ const ClientDetail = () => {
   const [editForm, setEditForm] = useState({});
   const [data, setData] = useState({ projects: [], tasks: [], meetings: [], interactions: [], payments: [] });
 
+  const [revealedCard, setRevealedCard] = useState({ number: false });
+  const [decryptedCard, setDecryptedCard] = useState({ number: '' });
+
+  const handleRevealCard = async (field) => {
+    try {
+      const val = await decryptCard(client.card_number_enc);
+      if (val) {
+        setDecryptedCard(prev => ({ ...prev, [field]: val }));
+        setRevealedCard(prev => ({ ...prev, [field]: true }));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleHideCard = (field) => {
+    setRevealedCard(prev => ({ ...prev, [field]: false }));
+  };
+
+  const getHealthScore = () => {
+    if (!client) return 80;
+    if (client.status === 'Churned') return 0;
+    
+    let score = 100;
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    
+    // 1. Overdue payments check
+    const overduePayments = (data.payments || []).filter(p => !p.is_paid && p.due_date && new Date(p.due_date) < today);
+    score -= overduePayments.length * 25;
+    
+    // 2. Overdue tasks check
+    const overdueTasks = (data.tasks || []).filter(t => t.status !== 'Completed' && t.due_date && new Date(t.due_date) < today);
+    score -= overdueTasks.length * 15;
+    
+    // 3. Cap based on status
+    if (client.status === 'At Risk') {
+      score = Math.min(score, 40);
+    }
+    
+    // 4. Inactive check (no active projects in progress or pending)
+    const activeProjects = (data.projects || []).filter(p => p.status === 'In Progress' || p.status === 'Pending');
+    if (activeProjects.length === 0) {
+      score -= 15;
+    }
+    
+    return Math.max(10, Math.min(100, score));
+  };
+
   useEffect(() => { if (id) fetchClientData(); }, [id]);
 
-  const fetchClientData = async () => {
+    const fetchClientData = async () => {
     setLoading(true);
     try {
+      const { data: staffRows } = await supabase.from('user_roles').select('user_id, full_name, role');
+      setStaffList(staffRows || []);
+
       const { data: cData } = await supabase.from('clients').select('*').eq('id', id).maybeSingle();
       if (!cData) { setClient(null); setLoading(false); return; }
       setClient(cData);
@@ -58,7 +114,8 @@ const ClientDetail = () => {
         phone: editForm.phone,
         company: editForm.company,
         address: editForm.address,
-        status: editForm.status
+        status: editForm.status,
+        assigned_to: editForm.assigned_to || null
       }).eq('id', id);
       if (error) throw error;
       setClient({ ...client, ...editForm });
@@ -143,7 +200,7 @@ const ClientDetail = () => {
         <div style={{ position: 'absolute', top: '-50%', right: '-10%', width: '50%', height: '200%', background: 'radial-gradient(ellipse, rgba(99,102,241,0.06) 0%, transparent 70%)', pointerEvents: 'none' }} />
         
         <div style={{ width: 120, height: 120, borderRadius: 28, background: 'linear-gradient(135deg, #6366f1, #3b82f6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 42, fontWeight: 800, color: '#fff', boxShadow: '0 16px 32px rgba(99,102,241,0.25)', flexShrink: 0 }}>
-          {client.full_name?.[0]?.toUpperCase()}
+          {client.full_name?.trim()?.[0]?.toUpperCase()}
         </div>
 
         <div style={{ flex: 1, minWidth: 260 }}>
@@ -153,22 +210,26 @@ const ClientDetail = () => {
           </div>
           
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginTop: 24 }}>
-            {[
-              [Building2, 'Business Name', client.company || '—'],
-              [Mail, 'Email', client.email],
-              [Phone, 'Phone', client.phone || '—'],
-              [Calendar, 'Added', new Date(client.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })],
-            ].map(([Icon, lbl, val]) => (
-              <div key={lbl} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--bg-elevated)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                  <Icon size={14} />
+            {(() => {
+              const assignedStaff = staffList.find(s => s.user_id === client.assigned_to);
+              return [
+                [Building2, 'Business Name', client.company || '—'],
+                [Mail, 'Email', client.email],
+                [Phone, 'Phone', client.phone || '—'],
+                [Calendar, 'Added', new Date(client.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })],
+                [Users, 'Assigned Staff', assignedStaff ? `${assignedStaff.full_name} (${assignedStaff.role})` : 'Unassigned']
+              ].map(([Icon, lbl, val]) => (
+                <div key={lbl} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--bg-elevated)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                    <Icon size={14} />
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{lbl}</p>
+                    <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{val}</p>
+                  </div>
                 </div>
-                <div style={{ minWidth: 0 }}>
-                  <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{lbl}</p>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{val}</p>
-                </div>
-              </div>
-            ))}
+              ));
+            })()}
             {client.address && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, gridColumn: 'span 2' }}>
                 <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--bg-elevated)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
@@ -183,15 +244,47 @@ const ClientDetail = () => {
           </div>
         </div>
 
-        <div style={{ width: 140, padding: 20, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 20, textAlign: 'center', flexShrink: 0 }}>
-          <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>Health Score</p>
-          <div style={{ position: 'relative', width: 80, height: 80, margin: '0 auto' }}>
-            <svg style={{ width: '100%', height: '100%', transform: 'rotate(-90deg)' }}>
-              <circle cx="40" cy="40" r="36" fill="none" stroke="var(--border)" strokeWidth="6" />
-              <circle cx="40" cy="40" r="36" fill="none" stroke={client.health_score >= 70 ? 'var(--emerald)' : client.health_score >= 40 ? 'var(--amber)' : 'var(--rose)'} strokeWidth="6" strokeDasharray={226} strokeDashoffset={226 - (226 * (client.health_score || 80) / 100)} strokeLinecap="round" style={{ transition: 'stroke-dashoffset 1s ease' }} />
-            </svg>
-            <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, fontWeight: 800, color: 'var(--text-primary)' }}>{client.health_score || 80}</span>
-          </div>
+        <div style={{ width: 140, padding: 20, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 20, flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* Health Score */}
+          {(() => {
+            const score = getHealthScore();
+            return (
+              <div style={{ textAlign: 'center' }}>
+                <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>Health Score</p>
+                <div style={{ position: 'relative', width: 70, height: 70, margin: '0 auto' }}>
+                  <svg style={{ width: '100%', height: '100%', transform: 'rotate(-90deg)' }}>
+                    <circle cx="35" cy="35" r="31" fill="none" stroke="var(--border)" strokeWidth="5" />
+                    <circle cx="35" cy="35" r="31" fill="none" stroke={score >= 70 ? 'var(--emerald)' : score >= 40 ? 'var(--amber)' : 'var(--rose)'} strokeWidth="5" strokeDasharray={195} strokeDashoffset={195 - (195 * score / 100)} strokeLinecap="round" style={{ transition: 'stroke-dashoffset 1s ease' }} />
+                  </svg>
+                  <span style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 800, color: 'var(--text-primary)' }}>{score}</span>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Payment Method */}
+          {client.payment_method && (
+            <div style={{ textAlign: 'center', borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+              <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Payment</p>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent-light)' }}>{client.payment_method}</span>
+            </div>
+          )}
+
+          {/* Masked Card Display — Admin only reveal */}
+          {client.card_number && (
+            <div style={{ textAlign: 'center', borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+              <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Card</p>
+              <p style={{ fontSize: 11, fontFamily: 'monospace', color: 'var(--text-secondary)', marginBottom: 4 }}>
+                {revealedCard.number ? decryptedCard.number : `**** **** **** ${client.card_number?.slice(-4)}`}
+              </p>
+              {isAdmin && (
+                <button onClick={() => revealedCard.number ? handleHideCard('number') : handleRevealCard('number')}
+                  style={{ fontSize: 10, fontWeight: 700, color: revealedCard.number ? 'var(--rose)' : 'var(--accent-light)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
+                  {revealedCard.number ? 'Hide' : '🔓 Reveal'}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -244,11 +337,18 @@ const ClientDetail = () => {
                   </div>
                 ) : (
                   <table className="data-table">
-                    <thead><tr><th>Project Title</th><th>Budget</th><th>Status</th><th>Deadline</th></tr></thead>
+                    <thead><tr><th>Project Title</th><th>Services</th><th>Budget</th><th>Status</th><th>Deadline</th></tr></thead>
                     <tbody>
                       {data.projects.map(p => (
                         <tr key={p.id}>
                           <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{p.title}</td>
+                          <td style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                            {p.services ? (
+                              <span style={{ background: 'rgba(99,102,241,0.08)', color: 'var(--accent-light)', padding: '2px 8px', borderRadius: 6, fontSize: 11.5, border: '1px solid rgba(99,102,241,0.15)', display: 'inline-block' }}>
+                                {p.services}
+                              </span>
+                            ) : '—'}
+                          </td>
                           <td style={{ color: 'var(--accent-light)' }}>${(p.budget||0).toLocaleString()}</td>
                           <td><span className="badge badge-slate">{p.status}</span></td>
                           <td style={{ color: 'var(--text-secondary)' }}>{p.end_date ? new Date(p.end_date).toLocaleDateString('en-US', {month:'short',day:'numeric',year:'numeric'}) : '—'}</td>
@@ -339,6 +439,19 @@ const ClientDetail = () => {
                     <label className="label">Business Address</label>
                     <textarea className="input" rows={2} value={editForm.address} onChange={e => setEditForm({...editForm, address: e.target.value})} />
                   </div>
+                  {(isAdmin || isManager) && (
+                    <div className="col-span-2">
+                      <label className="label">Assign Client to Staff Member</label>
+                      <select className="input" value={editForm.assigned_to || ''} onChange={e => setEditForm({...editForm, assigned_to: e.target.value})}>
+                        <option value="">Select Staff...</option>
+                        {staffList.map(s => (
+                          <option key={s.user_id} value={s.user_id}>
+                            {s.full_name} ({s.role})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
                 <div className="modal-footer">
                   <button type="button" className="btn btn-secondary" onClick={() => setShowEditModal(false)}>Cancel</button>

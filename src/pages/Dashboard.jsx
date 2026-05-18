@@ -9,7 +9,7 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, BarChart, Bar,
+  Tooltip, ResponsiveContainer, BarChart, Bar, Cell
 } from 'recharts';
 
 const fmt = (n) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
@@ -59,7 +59,12 @@ const Dashboard = () => {
   const [projData, setProjData] = useState([]);
   const [revChartData, setRevChartData] = useState([]);
   const [myTasks, setMyTasks] = useState([]);
+  const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [topClientsData, setTopClientsData] = useState([]);
+  const [cityData, setCityData] = useState([]);
+  const [remainingDuesData, setRemainingDuesData] = useState([]);
+  const [monthlyClientsData, setMonthlyClientsData] = useState([]);
   const navigate = useNavigate();
 
   useEffect(() => { 
@@ -75,17 +80,23 @@ const Dashboard = () => {
       const nowStr = new Date().toISOString();
 
       // Base queries
-      let clientsQuery = supabase.from('clients').select('*', { count: 'exact', head: true });
-      let projectsQuery = supabase.from('projects').select('*', { count: 'exact', head: true });
-      let paymentsQuery = supabase.from('payments').select('amount, payment_date, is_paid, due_date').eq('is_paid', true);
+      let clientsQuery = (isAdmin || isManager) 
+        ? supabase.from('clients').select('id, full_name, city') 
+        : supabase.from('clients').select('*', { count: 'exact', head: true });
+      let projectsQuery = (isAdmin || isManager) 
+        ? supabase.from('projects').select('id, client_id, status, budget') 
+        : supabase.from('projects').select('*', { count: 'exact', head: true });
+      let paymentsQuery = supabase.from('payments').select('amount, payment_date, is_paid, due_date, project_id, payment_type');
       let overdueQuery = supabase.from('payments').select('*', { count: 'exact', head: true }).eq('is_paid', false).lt('due_date', nowStr);
-      let tasksQuery = supabase.from('tasks').select('*, clients(full_name), assignee:user_roles!tasks_assigned_to_fkey(full_name)').order('due_date', { ascending: true }).limit(5);
+      let tasksQuery = supabase.from('tasks').select('*, clients(full_name)').order('due_date', { ascending: true }).limit(5);
+      let projStatusQuery = supabase.from('projects').select('status');
 
       // Filtering for staff
       if (isStaff) {
-        clientsQuery = clientsQuery.eq('assigned_to', user.id);
-        projectsQuery = projectsQuery.eq('assigned_to', user.id);
+        clientsQuery = supabase.from('clients').select('*', { count: 'exact', head: true }).eq('assigned_to', user.id);
+        projectsQuery = supabase.from('projects').select('*', { count: 'exact', head: true }).eq('assigned_to', user.id);
         tasksQuery = tasksQuery.eq('assigned_to', user.id);
+        projStatusQuery = projStatusQuery.eq('assigned_to', user.id);
         
         const { data: staffProjIds } = await supabase.from('projects').select('id').eq('assigned_to', user.id);
         const pIds = staffProjIds?.map(p => p.id) || [];
@@ -98,23 +109,25 @@ const Dashboard = () => {
         }
       }
 
-      const [resC, resP, resRev, resProj, resOver, resTasks] = await Promise.all([
+      const [resC, resP, resRev, resProj, resOver, resTasks, resStaff] = await Promise.all([
         clientsQuery,
         projectsQuery,
         paymentsQuery,
-        supabase.from('projects').select('status').filter(isStaff ? 'assigned_to' : 'id', isStaff ? 'eq' : 'neq', isStaff ? user.id : '00000000-0000-0000-0000-000000000000'),
+        projStatusQuery,
         overdueQuery,
-        tasksQuery
+        tasksQuery,
+        supabase.from('user_roles').select('user_id, full_name')
       ]);
 
-      const c = resC?.count || 0;
-      const p = resP?.count || 0;
+      const c = (isAdmin || isManager) ? (resC?.data?.length || 0) : (resC?.count || 0);
+      const p = (isAdmin || isManager) ? (resP?.data?.length || 0) : (resP?.count || 0);
       const revData = resRev?.data || [];
       const projRows = resProj?.data || [];
       const overdueCount = resOver?.count || 0;
       const taskRows = resTasks?.data || [];
+      const staffRows = resStaff?.data || [];
 
-      const revenue = revData.reduce((s, x) => s + (x.amount || 0), 0);
+      const revenue = revData.filter(x => x.is_paid).reduce((s, x) => s + (x.amount || 0), 0);
       const counts = { Pending: 0, 'In Progress': 0, Completed: 0, Cancelled: 0 };
       projRows.forEach(r => { if (counts[r.status] !== undefined) counts[r.status]++; });
       
@@ -126,6 +139,139 @@ const Dashboard = () => {
       ]);
       setStats({ clients: c, projects: p, revenue, overdue: overdueCount });
       setMyTasks(taskRows);
+      setStaffList(staffRows);
+
+      // Admin/Manager Special Charts Calculation
+      if (isAdmin || isManager) {
+        const clientsList = resC?.data || [];
+        const projectsList = resP?.data || [];
+        const paymentsList = revData;
+
+        // 1. Clients by City (filtering out empty/null cities)
+        const cityCounts = {};
+        clientsList.forEach(cl => {
+          if (cl.city && cl.city.trim() !== '') {
+            const city = cl.city.trim();
+            cityCounts[city] = (cityCounts[city] || 0) + 1;
+          }
+        });
+        const sortedCities = Object.keys(cityCounts)
+          .map(name => ({ name, value: cityCounts[name] }))
+          .sort((a, b) => b.value - a.value)
+          .slice(0, 5);
+        setCityData(sortedCities);
+
+        // 2. Top Clients by Revenue
+        const projToClient = {};
+        projectsList.forEach(pr => {
+          projToClient[pr.id] = pr.client_id;
+        });
+
+        const clientRev = {};
+        paymentsList.forEach(pay => {
+          if (pay.is_paid) {
+            const clientId = projToClient[pay.project_id];
+            if (clientId) {
+              clientRev[clientId] = (clientRev[clientId] || 0) + (pay.amount || 0);
+            }
+          }
+        });
+
+        const clientNameMap = {};
+        clientsList.forEach(cl => {
+          clientNameMap[cl.id] = cl.full_name;
+        });
+
+        const sortedClients = Object.keys(clientRev)
+          .map(id => ({
+            name: clientNameMap[id] || 'Unknown Client',
+            revenue: clientRev[id]
+          }))
+          .sort((a, b) => b.revenue - a.revenue)
+          .slice(0, 5);
+
+        setTopClientsData(sortedClients);
+
+        // 3. Top Clients by Remaining Dues (Total project budget minus total paid amount)
+        const clientRemaining = {};
+        clientsList.forEach(cl => {
+          clientRemaining[cl.id] = {
+            name: cl.full_name,
+            budget: 0,
+            paid: 0
+          };
+        });
+
+        projectsList.forEach(pr => {
+          const cId = pr.client_id;
+          if (clientRemaining[cId]) {
+            clientRemaining[cId].budget += parseFloat(pr.budget || 0);
+          }
+        });
+
+        paymentsList.forEach(pay => {
+          const cId = projToClient[pay.project_id];
+          if (cId && pay.is_paid && clientRemaining[cId]) {
+            clientRemaining[cId].paid += parseFloat(pay.amount || 0);
+          }
+        });
+
+        const sortedRemaining = Object.keys(clientRemaining)
+          .map(id => ({
+            id,
+            name: clientRemaining[id].name,
+            remaining: Math.max(0, clientRemaining[id].budget - clientRemaining[id].paid)
+          }))
+          .filter(item => item.remaining > 0.01)
+          .sort((a, b) => b.remaining - a.remaining)
+          .slice(0, 5);
+
+        setRemainingDuesData(sortedRemaining);
+
+        // 4. Monthly/Weekly Recurring Active Clients Alert Panel
+        const monthlyMap = {};
+        paymentsList.forEach(pay => {
+          if (pay.payment_type === 'Monthly' || pay.payment_type === 'Weekly') {
+            const cId = projToClient[pay.project_id];
+            if (cId) {
+              const cName = clientNameMap[cId] || 'Unknown Client';
+              const amt = parseFloat(pay.amount || 0);
+              
+              if (!monthlyMap[cId]) {
+                monthlyMap[cId] = {
+                  id: cId,
+                  name: cName,
+                  type: pay.payment_type,
+                  amount: amt,
+                  due_date: pay.due_date,
+                  is_paid: pay.is_paid
+                };
+              } else {
+                if (!pay.is_paid && monthlyMap[cId].is_paid) {
+                  monthlyMap[cId] = {
+                    id: cId,
+                    name: cName,
+                    type: pay.payment_type,
+                    amount: amt,
+                    due_date: pay.due_date,
+                    is_paid: pay.is_paid
+                  };
+                }
+              }
+            }
+          }
+        });
+        
+        const sortedMonthly = Object.values(monthlyMap)
+          .sort((a, b) => {
+            if (a.is_paid && !b.is_paid) return 1;
+            if (!a.is_paid && b.is_paid) return -1;
+            return new Date(a.due_date || 0) - new Date(b.due_date || 0);
+          })
+          .slice(0, 5);
+          
+        setMonthlyClientsData(sortedMonthly);
+      }
 
       // Build revenue chart data
       const monthsStr = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -138,7 +284,7 @@ const Dashboard = () => {
       }
 
       revData.forEach(r => {
-        if (r.payment_date) {
+        if (r.is_paid && r.payment_date) {
           const mName = monthsStr[new Date(r.payment_date).getMonth()];
           if (chartMap[mName] !== undefined) chartMap[mName] += (r.amount || 0);
         }
@@ -246,6 +392,184 @@ const Dashboard = () => {
         </div>
       </div>
 
+      {/* Admin/Manager Analytics: Top Clients & Cities */}
+      {(isAdmin || isManager) && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }} className="dash-grid">
+          {/* Top Clients Chart */}
+          <div className="card" style={{ padding: 24 }}>
+            <p className="section-title" style={{ marginBottom: 18 }}>Top Clients by Revenue</p>
+            <div style={{ height: 200 }}>
+              {topClientsData.length === 0 ? (
+                <div className="empty-state" style={{ height: '100%', padding: 0 }}>
+                  <p className="empty-desc">No revenue recorded for top clients.</p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={topClientsData} layout="vertical" margin={{ top: 5, right: 20, left: 15, bottom: 5 }}>
+                    <defs>
+                      <linearGradient id="clientRevGrad" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0%" stopColor="rgba(99, 102, 241, 0.8)" />
+                        <stop offset="100%" stopColor="rgba(129, 140, 248, 0.95)" />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="rgba(255,255,255,0.03)" strokeDasharray="3 3" horizontal={false} />
+                    <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-muted)' }} tickFormatter={v => `$${v}`} />
+                    <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-primary)', fontWeight: 600 }} width={80} />
+                    <Tooltip 
+                      contentStyle={{ ...TTStyle, backgroundColor: 'rgba(23,23,37,0.95)', backdropFilter: 'blur(8px)', boxShadow: '0 8px 24px rgba(0,0,0,0.3)', border: '1px solid var(--border)' }} 
+                      cursor={{ fill: 'rgba(255,255,255,0.03)', radius: 6 }} 
+                      formatter={v => [`$${v.toLocaleString()}`, 'Revenue']} 
+                    />
+                    <Bar dataKey="revenue" radius={[0, 6, 6, 0]} fill="url(#clientRevGrad)" barSize={16} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+
+          {/* Cities breakdown Chart */}
+          <div className="card" style={{ padding: 24 }}>
+            <p className="section-title" style={{ marginBottom: 18 }}>Clients by City Breakdown</p>
+            <div style={{ height: 200 }}>
+              {cityData.length === 0 ? (
+                <div className="empty-state" style={{ height: '100%', padding: 0 }}>
+                  <p className="empty-desc">No client city data available.</p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={cityData} margin={{ top: 5, right: 10, left: -24, bottom: 5 }}>
+                    <defs>
+                      <linearGradient id="cityCountGrad" x1="0" y1="1" x2="0" y2="0">
+                        <stop offset="0%" stopColor="rgba(16, 185, 129, 0.75)" />
+                        <stop offset="100%" stopColor="rgba(52, 211, 153, 0.95)" />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="rgba(255,255,255,0.03)" strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-primary)', fontWeight: 600 }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-muted)' }} allowDecimals={false} />
+                    <Tooltip 
+                      contentStyle={{ ...TTStyle, backgroundColor: 'rgba(23,23,37,0.95)', backdropFilter: 'blur(8px)', boxShadow: '0 8px 24px rgba(0,0,0,0.3)', border: '1px solid var(--border)' }} 
+                      cursor={{ fill: 'rgba(255,255,255,0.03)', radius: 6 }} 
+                      formatter={v => [v, 'Clients']} 
+                    />
+                    <Bar dataKey="value" radius={[6, 6, 0, 0]} fill="url(#cityCountGrad)" barSize={24} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Financial Tracking & Alerts Panel */}
+      {(isAdmin || isManager) && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }} className="dash-grid">
+          {/* Outstanding Remaining Dues Card */}
+          <div className="card" style={{ padding: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+              <div>
+                <p className="section-title">Outstanding Client Balances</p>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Remaining contract amounts (Budget - Collected)</p>
+              </div>
+              <button onClick={() => navigate('/payments')} className="text-xs text-indigo-400 font-semibold hover:underline">Receive Payments</button>
+            </div>
+            
+            {remainingDuesData.length === 0 ? (
+              <div className="empty-state" style={{ padding: '24px 0' }}>
+                <p className="empty-desc">All client balances are fully paid!</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {remainingDuesData.map(client => (
+                  <div key={client.id} style={{ 
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '12px 14px', borderRadius: 10,
+                    background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)'
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {client.name}
+                      </p>
+                      <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        Pending Contract Dues
+                      </p>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <span style={{ 
+                        fontSize: 14, fontWeight: 800, color: 'var(--amber)',
+                        background: 'rgba(245,158,11,0.08)', padding: '4px 10px', borderRadius: 6,
+                        border: '1px solid rgba(245,158,11,0.15)', display: 'inline-block'
+                      }}>
+                        ${client.remaining.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Monthly / Weekly Recurring Clients Card */}
+          <div className="card" style={{ padding: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+              <div>
+                <p className="section-title">Active Recurring Contracts</p>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Clients on recurring subscriptions</p>
+              </div>
+              <button onClick={() => navigate('/clients')} className="text-xs text-indigo-400 font-semibold hover:underline">View Clients</button>
+            </div>
+
+            {monthlyClientsData.length === 0 ? (
+              <div className="empty-state" style={{ padding: '24px 0' }}>
+                <p className="empty-desc">No active recurring clients.</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                {monthlyClientsData.map(sub => (
+                  <div key={sub.id} style={{ 
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '12px 14px', borderRadius: 10,
+                    background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)'
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                        <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {sub.name}
+                        </p>
+                        <span style={{ 
+                          fontSize: 10, fontWeight: 700,
+                          color: 'var(--indigo-light)', background: 'rgba(99,102,241,0.08)',
+                          padding: '2px 6px', borderRadius: 4, textTransform: 'uppercase'
+                        }}>
+                          {sub.type}
+                        </span>
+                      </div>
+                      <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        {sub.is_paid ? 'Paid for current cycle' : `Due: ${sub.due_date ? new Date(sub.due_date).toLocaleDateString() : 'N/A'}`}
+                      </p>
+                    </div>
+                    <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                      <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--accent-light)' }}>
+                        ${sub.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </span>
+                      <span style={{ 
+                        fontSize: 9, fontWeight: 800,
+                        color: sub.is_paid ? 'var(--emerald)' : 'var(--rose)',
+                        background: sub.is_paid ? 'rgba(16,185,129,0.08)' : 'rgba(244,63,94,0.08)',
+                        padding: '2px 6px', borderRadius: 4, textTransform: 'uppercase',
+                        border: sub.is_paid ? '1px solid rgba(16,185,129,0.15)' : '1px solid rgba(244,63,94,0.15)'
+                      }}>
+                        {sub.is_paid ? 'Collected' : 'Pending'}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 16, marginBottom: 16 }} className="dash-grid">
         <div className="card" style={{ padding: 24 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
@@ -274,10 +598,12 @@ const Dashboard = () => {
                       <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.title}</p>
                       <p style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
                         {task.clients?.full_name || 'No Client'} 
-                        {isAdmin && task.assignee?.full_name && (
+                        {isAdmin && (
                           <>
                             <span style={{ width: 3, height: 3, borderRadius: '50%', background: 'var(--border)' }} />
-                            <span style={{ color: 'var(--accent-light)', fontWeight: 600 }}>to {task.assignee.full_name}</span>
+                            <span style={{ color: 'var(--accent-light)', fontWeight: 600 }}>
+                              to {staffList.find(s => s.user_id === task.assigned_to)?.full_name || 'Staff'}
+                            </span>
                           </>
                         )}
                       </p>

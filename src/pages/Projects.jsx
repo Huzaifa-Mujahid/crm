@@ -14,18 +14,36 @@ const STATUS_STYLES = {
 const STATUS_COLORS = { Pending: '#f59e0b', 'In Progress': '#6366f1', Completed: '#10b981', Cancelled: '#f43f5e' };
 const STATUSES = ['Pending', 'In Progress', 'Completed', 'Cancelled'];
 
-const EMPTY_FORM = { id: null, client_id: '', title: '', description: '', budget: '', status: 'Pending', start_date: '', end_date: '' };
+const SERVICE_OPTIONS = [
+  'GMB + WEBSITE DEVELOPMENT',
+  'SOCIAL MEDIA',
+  'LANDING PAGE - MARKETING',
+  'WEBSITE REDESIGN & DEVELOPMENT',
+  'GMB + LANDING PAGE MARKETING',
+  'GMB + SOCIAL MEDIA (PAID)',
+  'GMB+WEBSITE DEVELOPMENT',
+  'GOOGLE BUSINESS PROFILE ( SEO )',
+  'GMB CREATION ONE TIME',
+  'GOOGLE ADS',
+];
+
+const EMPTY_FORM = { id: null, client_id: '', title: '', services: '', description: '', budget: '', status: 'Pending', start_date: '', end_date: '' };
 
 /* ── Project Modal ─────────────────────────────────────────────── */
 const ProjectModal = ({ formData, setFormData, clients, saving, formError, onSave, onDelete, onClose, isEdit }) => {
   const { user, isAdmin, isManager } = useAuth();
   const [staffList, setStaffList] = useState([]);
+  const [customService, setCustomService] = useState(false);
 
   useEffect(() => {
-    if (isAdmin || isManager) {
-      fetchStaff();
-    }
+    fetchStaff();
   }, []);
+
+  useEffect(() => {
+    if (formData.services && !SERVICE_OPTIONS.includes(formData.services)) {
+      setCustomService(true);
+    }
+  }, [formData.services]);
 
   const fetchStaff = async () => {
     const { data } = await supabase.from('user_roles').select('user_id, full_name, role');
@@ -51,9 +69,38 @@ const ProjectModal = ({ formData, setFormData, clients, saving, formError, onSav
               </select>
             </div>
           )}
-          <div>
-            <label className="label">Project Title *</label>
-            <input className="input" required value={formData.title} onChange={e => setFormData(f => ({ ...f, title: e.target.value }))} placeholder="e.g. Website Redesign" />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div>
+              <label className="label">Project Title *</label>
+              <input className="input" required value={formData.title} onChange={e => setFormData(f => ({ ...f, title: e.target.value }))} placeholder="e.g. Website Redesign" />
+            </div>
+            <div>
+              <label className="label">Services Included</label>
+              {!customService && (SERVICE_OPTIONS.includes(formData.services) || !formData.services) ? (
+                <select className="input" value={formData.services || ''} onChange={e => {
+                  const val = e.target.value;
+                  if (val === 'Custom') {
+                    setCustomService(true);
+                    setFormData(f => ({ ...f, services: '' }));
+                  } else {
+                    setFormData(f => ({ ...f, services: val }));
+                  }
+                }}>
+                  <option value="">Select Service...</option>
+                  {SERVICE_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                  <option value="Custom">✨ Write Custom Service...</option>
+                </select>
+              ) : (
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input className="input" style={{ flex: 1 }} value={formData.services || ''} onChange={e => setFormData(f => ({ ...f, services: e.target.value.toUpperCase() }))} placeholder="Write custom service..." />
+                  <button className="btn btn-secondary btn-sm" style={{ padding: '0 10px', height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center' }} 
+                    type="button"
+                    onClick={() => { setCustomService(false); setFormData(f => ({ ...f, services: '' })); }}>
+                    ✕ Dropdown
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
           <div>
             <label className="label">Description</label>
@@ -62,11 +109,21 @@ const ProjectModal = ({ formData, setFormData, clients, saving, formError, onSav
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
               <label className="label">Sales Agent Name</label>
-              <input className="input" value={formData.sales_agent || ''} onChange={e => setFormData(f => ({ ...f, sales_agent: e.target.value }))} placeholder="Agent name…" />
+              <select className="input" value={formData.sales_agent || ''} onChange={e => setFormData(f => ({ ...f, sales_agent: e.target.value }))}>
+                <option value="">Select Agent...</option>
+                {staffList.filter(s => s.role === 'Sales Agent').map(s => (
+                  <option key={s.user_id} value={s.full_name}>{s.full_name}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="label">Closer Name</label>
-              <input className="input" value={formData.closer || ''} onChange={e => setFormData(f => ({ ...f, closer: e.target.value }))} placeholder="Closer name…" />
+              <select className="input" value={formData.closer || ''} onChange={e => setFormData(f => ({ ...f, closer: e.target.value }))}>
+                <option value="">Select Closer...</option>
+                {staffList.filter(s => s.role === 'Sales Closer').map(s => (
+                  <option key={s.user_id} value={s.full_name}>{s.full_name}</option>
+                ))}
+              </select>
             </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -116,7 +173,8 @@ const ProjectModal = ({ formData, setFormData, clients, saving, formError, onSav
 
 /* ── Projects Page ─────────────────────────────────────────────── */
 const Projects = () => {
-  const { user } = useAuth();
+  const { user, isAdmin, isManager } = useAuth();
+  const isStaff = !isAdmin && !isManager;
   const location = useLocation();
   const [projects, setProjects] = useState([]);
   const [clients, setClients] = useState([]);
@@ -141,10 +199,14 @@ const Projects = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [{ data: pData }, { data: cData }] = await Promise.all([
-        supabase.from('projects').select('*').order('created_at', { ascending: false }),
-        supabase.from('clients').select('id, full_name'),
-      ]);
+      let projQuery = supabase.from('projects').select('*').order('created_at', { ascending: false });
+      let clientsQuery = supabase.from('clients').select('id, full_name');
+      // Staff only see their assigned projects and clients
+      if (isStaff) {
+        projQuery = projQuery.eq('assigned_to', user.id);
+        clientsQuery = clientsQuery.eq('assigned_to', user.id);
+      }
+      const [{ data: pData }, { data: cData }] = await Promise.all([projQuery, clientsQuery]);
       const map = (cData || []).reduce((a, c) => ({ ...a, [c.id]: c.full_name }), {});
       setProjects((pData || []).map(p => ({ ...p, client_name: map[p.client_id] || 'Unknown' })));
       setClients(cData || []);
@@ -152,7 +214,7 @@ const Projects = () => {
   };
 
   const openAdd = () => { setFormData({ ...EMPTY_FORM, assigned_to: user.id }); setFormError(null); setIsEdit(false); setShowModal(true); };
-  const openEdit = (p) => { setFormData({ id: p.id, client_id: p.client_id, title: p.title, description: p.description || '', budget: p.budget || '', status: p.status, start_date: p.start_date?.slice(0, 10) || '', end_date: p.end_date?.slice(0, 10) || '', sales_agent: p.sales_agent || '', closer: p.closer || '', assigned_to: p.assigned_to || '' }); setFormError(null); setIsEdit(true); setShowModal(true); };
+  const openEdit = (p) => { setFormData({ id: p.id, client_id: p.client_id, title: p.title, services: p.services || '', description: p.description || '', budget: p.budget || '', status: p.status, start_date: p.start_date?.slice(0, 10) || '', end_date: p.end_date?.slice(0, 10) || '', sales_agent: p.sales_agent || '', closer: p.closer || '', assigned_to: p.assigned_to || '' }); setFormError(null); setIsEdit(true); setShowModal(true); };
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -160,7 +222,7 @@ const Projects = () => {
     if (!formData.title) { setFormError('Project title is required.'); return; }
     setSaving(true); setFormError(null);
     try {
-      const payload = { client_id: formData.client_id, title: formData.title, description: formData.description, budget: parseFloat(formData.budget) || 0, status: formData.status, start_date: formData.start_date || null, end_date: formData.end_date || null, sales_agent: formData.sales_agent || null, closer: formData.closer || null, assigned_to: formData.assigned_to || user.id };
+      const payload = { client_id: formData.client_id, title: formData.title, services: formData.services || null, description: formData.description, budget: parseFloat(formData.budget) || 0, status: formData.status, start_date: formData.start_date || null, end_date: formData.end_date || null, sales_agent: formData.sales_agent || null, closer: formData.closer || null, assigned_to: formData.assigned_to || user.id };
       if (isEdit) { const { error } = await supabase.from('projects').update(payload).eq('id', formData.id); if (error) throw error; }
       else { const { error } = await supabase.from('projects').insert([payload]); if (error) throw error; }
       setShowModal(false); fetchData();
@@ -233,13 +295,20 @@ const Projects = () => {
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table className="data-table">
-                <thead><tr><th>Project</th><th>Client</th><th>Budget</th><th>Status</th><th>Deadline</th><th style={{ textAlign: 'right' }}>Actions</th></tr></thead>
+                <thead><tr><th>Project</th><th>Services</th><th>Client</th><th>Budget</th><th>Status</th><th>Deadline</th><th style={{ textAlign: 'right' }}>Actions</th></tr></thead>
                 <tbody>
                   {filtered.map((p, i) => (
                     <motion.tr key={p.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.03 }} onClick={() => openEdit(p)}>
                       <td>
                         <p style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 2 }}>{p.title}</p>
                         <p style={{ fontSize: 12, color: 'var(--text-muted)', maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.description || '—'}</p>
+                      </td>
+                      <td style={{ fontSize: 12.5, color: 'var(--text-secondary)' }}>
+                        {p.services ? (
+                          <span style={{ background: 'rgba(99,102,241,0.08)', color: 'var(--accent-light)', padding: '3px 8px', borderRadius: 6, fontSize: 11.5, border: '1px solid rgba(99,102,241,0.15)', display: 'inline-block' }}>
+                            {p.services}
+                          </span>
+                        ) : '—'}
                       </td>
                       <td style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{p.client_name}</td>
                       <td style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent-light)' }}>${(p.budget || 0).toLocaleString()}</td>
@@ -272,6 +341,11 @@ const Projects = () => {
                     <motion.div key={p.id} onClick={() => openEdit(p)} style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 10, padding: '12px 14px', cursor: 'pointer', transition: 'border-color 0.15s' }}
                       whileHover={{ borderColor: 'var(--border-mid)' }}>
                       <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>{p.title}</p>
+                      {p.services && (
+                        <p style={{ fontSize: 11, color: 'var(--accent-light)', marginBottom: 6, fontStyle: 'italic' }}>
+                          ⚡ {p.services}
+                        </p>
+                      )}
                       <p style={{ fontSize: 11.5, color: 'var(--text-muted)', marginBottom: 10 }}>{p.client_name}</p>
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent-light)' }}>${(p.budget || 0).toLocaleString()}</span>

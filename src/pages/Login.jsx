@@ -121,7 +121,7 @@ const Login = () => {
               cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8
             }}
           >
-            <Users size={14} /> Staff
+            <Users size={14} /> User
           </button>
         </div>
 
@@ -250,7 +250,7 @@ const Login = () => {
                 </div>
 
                 <button type="submit" disabled={loading} className="btn btn-primary" style={{ width: '100%', height: 46, marginTop: 6 }}>
-                  {loading ? <Loader2 className="animate-spin" size={18} /> : <>Login as Staff <ArrowRight size={16} /></>}
+                  {loading ? <Loader2 className="animate-spin" size={18} /> : <>Login as User <ArrowRight size={16} /></>}
                 </button>
               </motion.form>
             )}

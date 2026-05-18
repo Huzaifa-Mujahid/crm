@@ -21,6 +21,9 @@ const Staff = () => {
   const [saving, setSaving] = useState(false);
   const [newStaff, setNewStaff] = useState({ id: null, full_name: '', username: '', role: 'Sales Agent', key: '' });
   const [error, setError] = useState(null);
+  const [revealedKeys, setRevealedKeys] = useState({}); // { [id]: true/false }
+
+  const toggleReveal = (id) => setRevealedKeys(prev => ({ ...prev, [id]: !prev[id] }));
 
   useEffect(() => {
     fetchStaff();
@@ -129,7 +132,7 @@ const Staff = () => {
     <div className="animate-in" style={{ paddingBottom: 40 }}>
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="page-title">Staff Management</h1>
+          <h1 className="page-title">User Management</h1>
           <p className="page-subtitle">Manage 6-digit keys and roles for your team</p>
         </div>
         <button 
@@ -137,7 +140,7 @@ const Staff = () => {
           className="btn btn-primary flex items-center gap-2"
         >
           <UserPlus size={16} />
-          <span>Create Staff Key</span>
+          <span>Create User Key</span>
         </button>
       </div>
 
@@ -155,7 +158,7 @@ const Staff = () => {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
             <input 
               type="text" 
-              placeholder="Search staff or keys..." 
+              placeholder="Search users or keys..." 
               className="w-full bg-[var(--bg-base)] border border-[var(--border)] rounded-lg py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-indigo-500/50 transition-colors"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -167,7 +170,7 @@ const Staff = () => {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-[rgba(255,255,255,0.02)]">
-                <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-slate-500">Staff Name</th>
+                <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-slate-500">User Name</th>
                 <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-slate-500">Login Key</th>
                 <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-slate-500">Role</th>
                 <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-slate-500">Status</th>
@@ -189,7 +192,7 @@ const Staff = () => {
                 ))
               ) : filteredKeys.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="px-6 py-20 text-center text-slate-500">No staff keys found. Create one to get started.</td>
+                  <td colSpan="6" className="px-6 py-20 text-center text-slate-500">No user keys found. Create one to get started.</td>
                 </tr>
               ) : (
                 filteredKeys.map((s) => (
@@ -197,15 +200,24 @@ const Staff = () => {
                     <td className="px-6 py-5">
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-full bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 font-bold text-sm">
-                          {s.full_name?.[0] || 'S'}
+                          {(s.full_name?.trim()?.[0] || 'S').toUpperCase()}
                         </div>
                         <span className="text-sm font-semibold text-white">{s.full_name}</span>
                       </div>
                     </td>
                     <td className="px-6 py-5">
-                      <div className="flex items-center gap-2 font-mono text-indigo-400 font-bold tracking-widest bg-indigo-500/5 px-2 py-1 rounded border border-indigo-500/10 w-fit">
-                        <Key size={12} className="opacity-50" />
-                        {s.key}
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 font-mono text-indigo-400 font-bold tracking-widest bg-indigo-500/5 px-2 py-1 rounded border border-indigo-500/10 w-fit">
+                          <Key size={12} className="opacity-50" />
+                          {revealedKeys[s.id] ? s.key : '••••••'}
+                        </div>
+                        <button
+                          onClick={() => toggleReveal(s.id)}
+                          className="text-xs text-slate-500 hover:text-indigo-400 transition-colors px-2 py-1 rounded border border-slate-700 hover:border-indigo-500/30"
+                          title={revealedKeys[s.id] ? 'Hide Key' : 'Reveal Key'}
+                        >
+                          {revealedKeys[s.id] ? 'Hide' : 'Reveal'}
+                        </button>
                       </div>
                     </td>
                     <td className="px-6 py-5">
@@ -231,7 +243,7 @@ const Staff = () => {
                       <button 
                         onClick={() => openEdit(s)}
                         className="p-2 text-slate-400 hover:text-indigo-400 transition-colors" 
-                        title="Edit Staff"
+                        title="Edit User"
                       >
                         <Edit2 size={16} />
                       </button>
@@ -256,13 +268,13 @@ const Staff = () => {
           <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setIsModalOpen(false)}>
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="modal-box max-w-md">
               <div className="modal-header">
-                <span className="modal-title">{isEdit ? 'Update Staff Access' : 'Create New Staff Key'}</span>
+                <span className="modal-title">{isEdit ? 'Update User Access' : 'Create New User Key'}</span>
                 <button onClick={() => setIsModalOpen(false)} className="text-slate-500 hover:text-white"><X size={18} /></button>
               </div>
               <form onSubmit={handleCreateKey}>
                 <div className="modal-body flex flex-col gap-4">
                   <div>
-                    <label className="label">Staff Member Name</label>
+                    <label className="label">User Name</label>
                     <input 
                       className="input" 
                       placeholder="e.g. Sarah Connor" 
@@ -325,7 +337,7 @@ const Staff = () => {
           <Shield size={24} className="text-indigo-400 mb-4" />
           <h3 className="text-sm font-bold text-white mb-2">Role Permissions</h3>
           <p className="text-xs text-slate-400 leading-relaxed">
-            Admins have full access. Managers can view all clients but cannot manage staff. Staff members only see their assigned data.
+            Admins have full access. Managers can view all clients but cannot manage users. Users only see their assigned data.
           </p>
         </div>
         <div className="card p-6 bg-gradient-to-br from-emerald-500/5 to-transparent border-emerald-500/10">
@@ -339,7 +351,7 @@ const Staff = () => {
           <AlertCircle size={24} className="text-amber-400 mb-4" />
           <h3 className="text-sm font-bold text-white mb-2">Audit Logs</h3>
           <p className="text-xs text-slate-400 leading-relaxed">
-            Every action taken by a staff member is recorded in the activity log for administrative review and quality control.
+            Every action taken by a user is recorded in the activity log for administrative review and quality control.
           </p>
         </div>
       </div>

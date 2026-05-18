@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Filter, MessageSquare, Mail, Phone, Users, FileText, Clock, AlertCircle, X, Loader2 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../hooks/useAuth';
 
 const TYPES = ['Call', 'Email', 'Meeting', 'Note'];
 
@@ -60,6 +61,8 @@ const InteractionModal = ({ form, setForm, clients, saving, err, onSave, onClose
 );
 
 const Interactions = () => {
+  const { user, isAdmin, isManager } = useAuth();
+  const isStaff = !isAdmin && !isManager;
   const location = useLocation();
   const [interactions, setInteractions] = useState([]);
   const [clients, setClients] = useState([]);
@@ -82,10 +85,13 @@ const Interactions = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [{ data: iData }, { data: cData }] = await Promise.all([
-        supabase.from('interactions').select('*, clients(full_name)').order('interaction_date', { ascending: false }),
-        supabase.from('clients').select('id, full_name')
-      ]);
+      let intQuery = supabase.from('interactions').select('*, clients(full_name)').order('interaction_date', { ascending: false });
+      let clientsQuery = supabase.from('clients').select('id, full_name');
+      if (isStaff) {
+        intQuery = intQuery.eq('created_by', user.id);
+        clientsQuery = clientsQuery.eq('assigned_to', user.id);
+      }
+      const [{ data: iData }, { data: cData }] = await Promise.all([intQuery, clientsQuery]);
       setInteractions(iData || []);
       setClients(cData || []);
     } catch (e) { console.error(e); } finally { setLoading(false); }

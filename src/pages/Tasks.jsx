@@ -45,9 +45,9 @@ const Tasks = () => {
 
   useEffect(() => {
     fetchTasks();
+    fetchClients();
     if (isAdmin || isManager) {
       fetchStaff();
-      fetchClients();
     }
 
     const params = new URLSearchParams(location.search);
@@ -88,7 +88,7 @@ const Tasks = () => {
 
   const openAddTask = () => {
     setIsEdit(false);
-    setNewTask({ id: null, title: '', client_id: '', assigned_to: '', priority: 'Medium', duration: '', due_date: '', description: '' });
+    setNewTask({ id: null, title: '', client_id: '', assigned_to: (isAdmin || isManager) ? '' : user.id, priority: 'Medium', duration: '', due_date: '', description: '' });
     setIsModalOpen(true);
   };
 
@@ -102,7 +102,8 @@ const Tasks = () => {
       priority: task.priority,
       duration: task.duration || '',
       due_date: task.due_date || '',
-      description: task.description || ''
+      description: task.description || '',
+      created_by: task.created_by || ''
     });
     setIsModalOpen(true);
   };
@@ -114,11 +115,12 @@ const Tasks = () => {
       const payload = {
         title: newTask.title,
         client_id: newTask.client_id || null,
-        assigned_to: newTask.assigned_to || user.id,
+        assigned_to: (isAdmin || isManager) ? (newTask.assigned_to || user.id) : user.id,
         priority: newTask.priority,
         duration: newTask.duration,
         due_date: newTask.due_date || null,
-        description: newTask.description
+        description: newTask.description,
+        created_by: isEdit ? (newTask.created_by || user.id) : user.id
       };
 
       if (isEdit) {
@@ -130,7 +132,7 @@ const Tasks = () => {
       }
 
       setIsModalOpen(false);
-      setNewTask({ id: null, title: '', client_id: '', assigned_to: '', priority: 'Medium', duration: '', due_date: '', description: '' });
+      setNewTask({ id: null, title: '', client_id: '', assigned_to: (isAdmin || isManager) ? '' : user.id, priority: 'Medium', duration: '', due_date: '', description: '' });
       fetchTasks();
     } catch (err) {
       alert(err.message);
@@ -215,12 +217,14 @@ const Tasks = () => {
         ) : (
           filteredTasks.map((task, i) => {
             const isCompleted = task.status === 'Completed';
-            const isOverdue = task.due_date && new Date(task.due_date) < new Date() && !isCompleted;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const isOverdue = task.due_date && new Date(task.due_date) < today && !isCompleted;
             return (
               <motion.div key={task.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }} className="card"
                 style={{ padding: 20, borderColor: isOverdue ? 'rgba(244,63,94,0.25)' : undefined }}>
                 
-                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
                     <div style={{ width: 40, height: 40, borderRadius: 10, background: isCompleted ? 'rgba(100,116,139,0.1)' : 'rgba(99,102,241,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: isCompleted ? '#64748b' : 'var(--accent-light)', flexShrink: 0 }}>
                       <CheckSquare size={18} />
@@ -234,6 +238,13 @@ const Tasks = () => {
                     <CheckCircle2 size={14} />
                   </button>
                 </div>
+
+                {task.description && (
+                  <div style={{ marginTop: 4, marginBottom: 12, padding: '10px 12px', background: 'rgba(0,0,0,0.15)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                    <p style={{ fontSize: 9.5, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Description</p>
+                    <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0, whiteSpace: 'pre-wrap' }}>{task.description}</p>
+                  </div>
+                )}
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -255,18 +266,30 @@ const Tasks = () => {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid var(--border)', paddingTop: 12 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                     <div style={{ width: 20, height: 20, borderRadius: '50%', background: 'var(--bg-elevated)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, fontWeight: 800, color: 'var(--text-muted)' }}>
-                      {task.assigned_to === user.id ? 'ME' : (staffList.find(s => s.user_id === task.assigned_to)?.full_name?.[0] || '?')}
+                      {task.assigned_to === user.id ? 'ME' : (staffList.find(s => s.user_id === task.assigned_to)?.full_name?.trim()?.[0]?.toUpperCase() || '?')}
                     </div>
                     <span style={{ fontSize: 11, color: 'var(--text-muted)', fontWeight: 600 }}>{task.assigned_to === user.id ? 'Assigned to You' : (staffList.find(s => s.user_id === task.assigned_to)?.full_name || 'Member')}</span>
                   </div>
-                  <div style={{ display: 'flex', gap: 4 }}>
-                    <button className="btn btn-ghost btn-icon" onClick={() => openEditTask(task)} title="Edit"><Edit3 size={14} /></button>
-                    <button className="btn btn-ghost btn-icon" onClick={() => handleDeleteTask(task.id)} title="Delete" style={{ color: 'var(--text-muted)' }}
-                      onMouseEnter={e => e.currentTarget.style.color = 'var(--rose)'}
-                      onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
+                  {(() => {
+                    const taskCreator = staffList.find(s => s.user_id === task.created_by);
+                    const isCreatedByAdmin = task.created_by ? (taskCreator?.role === 'Admin' || taskCreator?.role === 'Manager') : false;
+                    const canEdit = isAdmin || isManager || !isCreatedByAdmin;
+
+                    return canEdit ? (
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button className="btn btn-ghost btn-icon" onClick={() => openEditTask(task)} title="Edit"><Edit3 size={14} /></button>
+                        <button className="btn btn-ghost btn-icon" onClick={() => handleDeleteTask(task.id)} title="Delete" style={{ color: 'var(--text-muted)' }}
+                          onMouseEnter={e => e.currentTarget.style.color = 'var(--rose)'}
+                          onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}>
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    ) : (
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                        🔒 Locked by Admin
+                      </span>
+                    );
+                  })()}
                 </div>
               </motion.div>
             );
@@ -300,10 +323,14 @@ const Tasks = () => {
 
                   <div>
                     <label className="label">Assign To</label>
-                    <select className="input" value={newTask.assigned_to} onChange={e => setNewTask({...newTask, assigned_to: e.target.value})}>
-                      <option value="">Assign to Me</option>
-                      {staffList.map(s => <option key={s.user_id} value={s.user_id}>{s.full_name} ({s.role})</option>)}
-                    </select>
+                    {isAdmin || isManager ? (
+                      <select className="input" value={newTask.assigned_to} onChange={e => setNewTask({...newTask, assigned_to: e.target.value})}>
+                        <option value="">Assign to Me</option>
+                        {staffList.map(s => <option key={s.user_id} value={s.user_id}>{s.full_name} ({s.role})</option>)}
+                      </select>
+                    ) : (
+                      <input className="input" value={user?.user_metadata?.full_name || 'Me'} disabled style={{ opacity: 0.7 }} />
+                    )}
                   </div>
 
                   <div>

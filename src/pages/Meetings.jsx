@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Calendar, Clock, MapPin, Video, CheckCircle2, X, Loader2, Edit3, Trash2 } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../hooks/useAuth';
 
 const EMPTY = { id: null, client_id: '', title: '', description: '', scheduled_at: '', duration_minutes: 30, location: '', is_completed: false };
 
@@ -72,6 +73,8 @@ const MeetingModal = ({ form, setForm, clients, saving, err, onSave, onClose }) 
 );
 
 const Meetings = () => {
+  const { user, isAdmin, isManager } = useAuth();
+  const isStaff = !isAdmin && !isManager;
   const [meetings, setMeetings] = useState([]);
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -99,10 +102,13 @@ const Meetings = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [{ data: mData }, { data: cData }] = await Promise.all([
-        supabase.from('meetings').select('*').order('scheduled_at', { ascending: true }),
-        supabase.from('clients').select('id, full_name'),
-      ]);
+      let meetQuery = supabase.from('meetings').select('*').order('scheduled_at', { ascending: true });
+      let clientsQuery = supabase.from('clients').select('id, full_name');
+      if (isStaff) {
+        meetQuery = meetQuery.eq('created_by', user.id);
+        clientsQuery = clientsQuery.eq('assigned_to', user.id);
+      }
+      const [{ data: mData }, { data: cData }] = await Promise.all([meetQuery, clientsQuery]);
       const map = (cData || []).reduce((a, c) => ({ ...a, [c.id]: c.full_name }), {});
       setMeetings((mData || []).map(m => ({ ...m, client_name: map[m.client_id] || 'Unknown' })));
       setClients(cData || []);

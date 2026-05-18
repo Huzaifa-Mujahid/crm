@@ -13,6 +13,7 @@ import {
   X,
   ChevronRight,
   CheckSquare,
+  History,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 
@@ -25,7 +26,7 @@ const NAV = [
       { label: 'Clients', path: '/clients', icon: Users, roles: ['Admin', 'Manager', 'Customer Success Manager', 'Sales Agent', 'Sales Closer'] },
       { label: 'Projects', path: '/projects', icon: Briefcase, roles: ['Admin', 'Manager', 'Customer Success Manager', 'Sales Agent', 'Sales Closer'] },
       { label: 'Tasks', path: '/tasks', icon: CheckSquare, roles: ['Admin', 'Manager', 'Customer Success Manager', 'Sales Agent', 'Sales Closer', 'Employee'] },
-      { label: 'Staff', path: '/staff', icon: Users, roles: ['Admin', 'Manager'] },
+      { label: 'Users', path: '/staff', icon: Users, roles: ['Admin'] },
     ],
   },
   {
@@ -40,6 +41,7 @@ const NAV = [
     group: 'Analytics',
     items: [
       { label: 'Reports', path: '/reports', icon: BarChart3, roles: ['Admin', 'Manager'] },
+      { label: 'Activity Log', path: '/activity-log', icon: History, roles: ['Admin', 'Manager'] },
     ],
   },
 ];
@@ -59,7 +61,7 @@ const Sidebar = ({ open, onClose }) => {
   };
 
   const fullName = user?.user_metadata?.full_name;
-  const initial = fullName?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U';
+  const initial = fullName?.trim()?.[0]?.toUpperCase() || user?.email?.trim()?.[0]?.toUpperCase() || 'U';
   const colorClass = avatarColor(user?.email);
   const displayEmail = user?.email || '';
   const displayName = fullName || displayEmail;
