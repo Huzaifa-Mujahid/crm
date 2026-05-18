@@ -53,6 +53,8 @@ const AddClientModal = ({ onClose, onSaved }) => {
     yelp_link: '',
     business_email: '',
     city: '',
+    state: '',
+    zip_code: '',
     services: '',
     agent_name: '',
     closer_name: '',
@@ -110,13 +112,13 @@ const AddClientModal = ({ onClose, onSaved }) => {
 
   const handleSave = async (e) => {
     e.preventDefault();
-    if (!form.full_name || !form.email) { setErr('Name and email are required.'); return; }
+    if (!form.full_name || !form.business_email) { setErr('Name and Business Email are required.'); return; }
     setSaving(true); setErr(null);
     try {
       // 1. Insert Client
       const clientPayload = {
         full_name: form.full_name,
-        email: form.email,
+        email: form.business_email,
         phone: form.phone,
         company: form.company,
         address: form.address,
@@ -131,6 +133,8 @@ const AddClientModal = ({ onClose, onSaved }) => {
         business_email: form.business_email || null,
         billing_zip: form.billing_zip || null,
         city: form.city || null,
+        state: form.state || null,
+        zip_code: form.zip_code || null,
         agent_name: form.agent_name || null,
         closer_name: form.closer_name || null,
         other_information: form.other_information || null,
@@ -245,14 +249,10 @@ const AddClientModal = ({ onClose, onSaved }) => {
                 <Building2 size={15} /> 1. Client & Business Details
               </h3>
               
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
                 <div>
                   <label className="label">Customer Name *</label>
                   <input className="input" value={form.full_name} onChange={e => up('full_name', e.target.value)} placeholder="John Smith" required />
-                </div>
-                <div>
-                  <label className="label">Email *</label>
-                  <input className="input" type="email" value={form.email} onChange={e => up('email', e.target.value)} placeholder="john@company.com" required />
                 </div>
               </div>
 
@@ -262,7 +262,7 @@ const AddClientModal = ({ onClose, onSaved }) => {
                   <input className="input" value={form.phone} onChange={e => up('phone', e.target.value)} placeholder="+1 (555) 000-0000" />
                 </div>
                 <div>
-                  <label className="label">Date</label>
+                  <label className="label">Sale Date</label>
                   <input className="input" type="date" value={form.date} onChange={e => up('date', e.target.value)} onClick={(e) => e.target.showPicker?.()} />
                 </div>
               </div>
@@ -289,19 +289,27 @@ const AddClientModal = ({ onClose, onSaved }) => {
                   <input className="input" value={form.company} onChange={e => up('company', e.target.value)} placeholder="Acme Inc." />
                 </div>
                 <div>
-                  <label className="label">Business Email</label>
-                  <input className="input" type="email" value={form.business_email} onChange={e => up('business_email', e.target.value)} placeholder="info@acme.com" />
+                  <label className="label">Business Email *</label>
+                  <input className="input" type="email" value={form.business_email} onChange={e => { up('business_email', e.target.value); up('email', e.target.value); }} placeholder="info@acme.com" required />
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 12 }}>
                 <div>
-                  <label className="label">Business Address</label>
+                  <label className="label">Street Address</label>
                   <input className="input" value={form.address} onChange={e => up('address', e.target.value)} placeholder="123 Main St" />
                 </div>
                 <div>
                   <label className="label">City</label>
                   <input className="input" value={form.city} onChange={e => up('city', e.target.value)} placeholder="New York" />
+                </div>
+                <div>
+                  <label className="label">State</label>
+                  <input className="input" value={form.state} onChange={e => up('state', e.target.value)} placeholder="NY" />
+                </div>
+                <div>
+                  <label className="label">Zip Code</label>
+                  <input className="input" value={form.zip_code} onChange={e => up('zip_code', e.target.value)} placeholder="10001" />
                 </div>
               </div>
 
@@ -393,7 +401,7 @@ const AddClientModal = ({ onClose, onSaved }) => {
                         onChange={e => up('card_number', e.target.value.replace(/\D/g, '').slice(0, 16))}
                       />
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
                       <div>
                         <label className="label">Expiration (MM/YY)</label>
                         <input 
@@ -411,6 +419,15 @@ const AddClientModal = ({ onClose, onSaved }) => {
                           placeholder="***"
                           value={form.card_cvv}
                           onChange={e => up('card_cvv', e.target.value.replace(/\D/g, '').slice(0, 4))}
+                        />
+                      </div>
+                      <div>
+                        <label className="label">Billing Zip Code</label>
+                        <input 
+                          className="input" 
+                          value={form.billing_zip} 
+                          onChange={e => up('billing_zip', e.target.value)} 
+                          placeholder="10001" 
                         />
                       </div>
                     </div>

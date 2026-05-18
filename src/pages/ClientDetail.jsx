@@ -110,10 +110,14 @@ const ClientDetail = () => {
     try {
       const { error } = await supabase.from('clients').update({
         full_name: editForm.full_name,
-        email: editForm.email,
+        email: editForm.business_email,
+        business_email: editForm.business_email,
         phone: editForm.phone,
         company: editForm.company,
         address: editForm.address,
+        city: editForm.city,
+        state: editForm.state,
+        zip_code: editForm.zip_code,
         status: editForm.status,
         assigned_to: editForm.assigned_to || null
       }).eq('id', id);
@@ -214,7 +218,7 @@ const ClientDetail = () => {
               const assignedStaff = staffList.find(s => s.user_id === client.assigned_to);
               return [
                 [Building2, 'Business Name', client.company || '—'],
-                [Mail, 'Email', client.email],
+                [Mail, 'Business Email', client.business_email || client.email],
                 [Phone, 'Phone', client.phone || '—'],
                 [Calendar, 'Added', new Date(client.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })],
                 [Users, 'Assigned Staff', assignedStaff ? `${assignedStaff.full_name} (${assignedStaff.role})` : 'Unassigned']
@@ -236,8 +240,15 @@ const ClientDetail = () => {
                   <Building2 size={14} />
                 </div>
                 <div style={{ minWidth: 0 }}>
-                  <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Business Address</p>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{client.address}</p>
+                  <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Street Address</p>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>
+                    {client.address}
+                    {(client.city || client.state || client.zip_code) && (
+                      <span style={{ color: 'var(--text-muted)', fontWeight: 500, marginLeft: 6 }}>
+                        ({[client.city, client.state, client.zip_code].filter(Boolean).join(', ')})
+                      </span>
+                    )}
+                  </p>
                 </div>
               </div>
             )}
@@ -415,16 +426,16 @@ const ClientDetail = () => {
                     <input className="input" value={editForm.full_name} onChange={e => setEditForm({...editForm, full_name: e.target.value})} required />
                   </div>
                   <div>
-                    <label className="label">Email *</label>
-                    <input className="input" type="email" value={editForm.email} onChange={e => setEditForm({...editForm, email: e.target.value})} required />
+                    <label className="label">Business Email *</label>
+                    <input className="input" type="email" value={editForm.business_email || editForm.email || ''} onChange={e => setEditForm({...editForm, business_email: e.target.value, email: e.target.value})} required />
                   </div>
                   <div>
                     <label className="label">Phone</label>
-                    <input className="input" value={editForm.phone} onChange={e => setEditForm({...editForm, phone: e.target.value})} />
+                    <input className="input" value={editForm.phone || ''} onChange={e => setEditForm({...editForm, phone: e.target.value})} />
                   </div>
                   <div>
                     <label className="label">Business Name</label>
-                    <input className="input" value={editForm.company} onChange={e => setEditForm({...editForm, company: e.target.value})} />
+                    <input className="input" value={editForm.company || ''} onChange={e => setEditForm({...editForm, company: e.target.value})} />
                   </div>
                   <div>
                     <label className="label">Status</label>
@@ -435,9 +446,23 @@ const ClientDetail = () => {
                       <option value="Churned">Churned</option>
                     </select>
                   </div>
-                  <div className="col-span-2">
-                    <label className="label">Business Address</label>
-                    <textarea className="input" rows={2} value={editForm.address} onChange={e => setEditForm({...editForm, address: e.target.value})} />
+                  <div className="col-span-2" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 12 }}>
+                    <div>
+                      <label className="label">Street Address</label>
+                      <input className="input" value={editForm.address || ''} onChange={e => setEditForm({...editForm, address: e.target.value})} />
+                    </div>
+                    <div>
+                      <label className="label">City</label>
+                      <input className="input" value={editForm.city || ''} onChange={e => setEditForm({...editForm, city: e.target.value})} />
+                    </div>
+                    <div>
+                      <label className="label">State</label>
+                      <input className="input" value={editForm.state || ''} onChange={e => setEditForm({...editForm, state: e.target.value})} />
+                    </div>
+                    <div>
+                      <label className="label">Zip Code</label>
+                      <input className="input" value={editForm.zip_code || ''} onChange={e => setEditForm({...editForm, zip_code: e.target.value})} />
+                    </div>
                   </div>
                   {(isAdmin || isManager) && (
                     <div className="col-span-2">
