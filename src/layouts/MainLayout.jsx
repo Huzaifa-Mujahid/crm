@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { motion } from 'framer-motion';
 import {
   LayoutDashboard,
   Users,
@@ -14,34 +15,44 @@ import {
   ChevronRight,
   CheckSquare,
   History,
+  Settings,
+  Sun,
+  Moon,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { useTheme } from '../hooks/useTheme';
 
 /* ── Navigation items ─────────────────────────────────────────── */
 const NAV = [
   {
     group: 'Workspace',
     items: [
-      { label: 'Dashboard', path: '/', icon: LayoutDashboard, roles: ['Admin', 'Manager', 'Customer Success Manager', 'Sales Agent', 'Sales Closer', 'Employee'] },
-      { label: 'Clients', path: '/clients', icon: Users, roles: ['Admin', 'Manager', 'Customer Success Manager', 'Sales Agent', 'Sales Closer'] },
-      { label: 'Projects', path: '/projects', icon: Briefcase, roles: ['Admin', 'Manager', 'Customer Success Manager', 'Sales Agent', 'Sales Closer'] },
-      { label: 'Tasks', path: '/tasks', icon: CheckSquare, roles: ['Admin', 'Manager', 'Customer Success Manager', 'Sales Agent', 'Sales Closer', 'Employee'] },
-      { label: 'Users', path: '/staff', icon: Users, roles: ['Admin'] },
+      { label: 'Dashboard',  path: '/',             icon: LayoutDashboard, roles: ['Admin', 'Manager', 'Customer Success Manager', 'Sales Agent', 'Sales Closer', 'Employee'] },
+      { label: 'Clients',    path: '/clients',       icon: Users,           roles: ['Admin', 'Manager', 'Customer Success Manager', 'Sales Agent', 'Sales Closer'] },
+      { label: 'Projects',   path: '/projects',      icon: Briefcase,       roles: ['Admin', 'Manager', 'Customer Success Manager', 'Sales Agent', 'Sales Closer'] },
+      { label: 'Tasks',      path: '/tasks',         icon: CheckSquare,     roles: ['Admin', 'Manager', 'Customer Success Manager', 'Sales Agent', 'Sales Closer', 'Employee'] },
+      { label: 'Users',      path: '/staff',         icon: Users,           roles: ['Admin'] },
     ],
   },
   {
     group: 'Activity',
     items: [
-      { label: 'Meetings', path: '/meetings', icon: Calendar, roles: ['Admin', 'Manager', 'Customer Success Manager', 'Sales Agent', 'Sales Closer'] },
-      { label: 'Interactions', path: '/interactions', icon: MessageSquare, roles: ['Admin', 'Manager', 'Customer Success Manager', 'Sales Agent', 'Sales Closer'] },
-      { label: 'Payments', path: '/payments', icon: CreditCard, roles: ['Admin', 'Manager'] },
+      { label: 'Meetings',     path: '/meetings',     icon: Calendar,        roles: ['Admin', 'Manager', 'Customer Success Manager', 'Sales Agent', 'Sales Closer'] },
+      { label: 'Interactions', path: '/interactions', icon: MessageSquare,   roles: ['Admin', 'Manager', 'Customer Success Manager', 'Sales Agent', 'Sales Closer'] },
+      { label: 'Payments',     path: '/payments',     icon: CreditCard,      roles: ['Admin', 'Manager'] },
     ],
   },
   {
     group: 'Analytics',
     items: [
-      { label: 'Reports', path: '/reports', icon: BarChart3, roles: ['Admin', 'Manager'] },
-      { label: 'Activity Log', path: '/activity-log', icon: History, roles: ['Admin', 'Manager'] },
+      { label: 'Reports',      path: '/reports',      icon: BarChart3,       roles: ['Admin', 'Manager'] },
+      { label: 'Activity Log', path: '/activity-log', icon: History,         roles: ['Admin', 'Manager'] },
+    ],
+  },
+  {
+    group: 'Account',
+    items: [
+      { label: 'Settings', path: '/settings', icon: Settings, roles: ['Admin'] },
     ],
   },
 ];
@@ -49,6 +60,44 @@ const NAV = [
 /* ── Avatar color by email initial ───────────────────────────── */
 const AVATAR_COLORS = ['avatar-indigo', 'avatar-emerald', 'avatar-rose', 'avatar-amber', 'avatar-blue'];
 const avatarColor = (email) => AVATAR_COLORS[(email?.charCodeAt(0) ?? 0) % AVATAR_COLORS.length];
+
+/* ── Theme Toggle Button ─────────────────────────────────────── */
+const ThemeToggle = () => {
+  const { theme, toggleTheme } = useTheme();
+  const isDark = theme === 'dark';
+  return (
+    <button
+      id="theme-toggle-sidebar"
+      onClick={toggleTheme}
+      title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+      style={{
+        background: isDark ? 'rgba(99,102,241,0.1)' : 'rgba(245,158,11,0.1)',
+        border: `1px solid ${isDark ? 'rgba(99,102,241,0.25)' : 'rgba(245,158,11,0.3)'}`,
+        borderRadius: 8,
+        cursor: 'pointer',
+        padding: '6px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        transition: 'all 0.2s',
+        flexShrink: 0,
+        width: 32,
+        height: 32,
+      }}
+    >
+      <motion.div
+        key={theme}
+        initial={{ rotate: -20, opacity: 0 }}
+        animate={{ rotate: 0, opacity: 1 }}
+        transition={{ duration: 0.25 }}
+      >
+        {isDark
+          ? <Sun size={14} style={{ color: '#fbbf24' }} />
+          : <Moon size={14} style={{ color: '#818cf8' }} />}
+      </motion.div>
+    </button>
+  );
+};
 
 /* ── Sidebar Component ─────────────────────────────────────────── */
 const Sidebar = ({ open, onClose }) => {
@@ -174,6 +223,7 @@ const Sidebar = ({ open, onClose }) => {
               </p>
               <p style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500 }}>{displayRole}</p>
             </div>
+            <ThemeToggle />
             <button
               onClick={handleLogout}
               title="Sign out"
@@ -200,6 +250,8 @@ const Sidebar = ({ open, onClose }) => {
 const MainLayout = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const location = useLocation();
+  const { theme, toggleTheme } = useTheme();
+  const isDark = theme === 'dark';
 
   // Close mobile sidebar on route change
   useEffect(() => { setSidebarOpen(false); }, [location.pathname]);
@@ -225,10 +277,33 @@ const MainLayout = ({ children }) => {
         }}
           className="md:hidden"
         >
+          <button
+            onClick={() => setSidebarOpen(s => !s)}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: 'var(--text-muted)', display: 'flex', alignItems: 'center',
+            }}
+          >
+            {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
-            <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em', background: 'linear-gradient(135deg, #fff, #a5b4fc)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Allied Marketing Solutions</span>
+            <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em', background: 'linear-gradient(135deg, var(--text-primary), #a5b4fc)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>Allied Marketing Solutions</span>
           </div>
-          <div style={{ width: 28 }} /> {/* spacer */}
+          {/* Theme toggle in mobile header */}
+          <button
+            onClick={toggleTheme}
+            style={{
+              background: isDark ? 'rgba(99,102,241,0.1)' : 'rgba(245,158,11,0.1)',
+              border: `1px solid ${isDark ? 'rgba(99,102,241,0.25)' : 'rgba(245,158,11,0.3)'}`,
+              borderRadius: 8, cursor: 'pointer',
+              padding: '6px', display: 'flex', alignItems: 'center',
+              width: 32, height: 32, justifyContent: 'center',
+            }}
+          >
+            {isDark
+              ? <Sun size={14} style={{ color: '#fbbf24' }} />
+              : <Moon size={14} style={{ color: '#818cf8' }} />}
+          </button>
         </header>
 
         {/* Page content */}

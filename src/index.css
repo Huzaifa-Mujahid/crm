@@ -1,8 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
 @import "tailwindcss";
 
-/* ─── Design Tokens ─────────────────────────────────────────────── */
-:root {
+/* ─── Design Tokens – Dark (default) ────────────────────────────── */
+:root,
+[data-theme="dark"] {
   /* Backgrounds */
   --bg-base:     #07090f;
   --bg-surface:  #0d1117;
@@ -11,9 +12,9 @@
   --bg-hover:    rgba(255,255,255,0.03);
 
   /* Borders */
-  --border:       rgba(255,255,255,0.07);
-  --border-mid:   rgba(255,255,255,0.12);
-  --border-accent:rgba(99,102,241,0.4);
+  --border:        rgba(255,255,255,0.07);
+  --border-mid:    rgba(255,255,255,0.12);
+  --border-accent: rgba(99,102,241,0.4);
 
   /* Text */
   --text-primary:   #f0f4ff;
@@ -38,6 +39,213 @@
 
   /* Sidebar */
   --sidebar-width: 240px;
+
+  /* Scrollbar */
+  --scrollbar-thumb: rgba(255,255,255,0.1);
+  --scrollbar-hover: rgba(255,255,255,0.18);
+}
+
+/* ─── Design Tokens – Light ──────────────────────────────────────── */
+[data-theme="light"] {
+  /* Backgrounds */
+  --bg-base:     #f1f5fb;
+  --bg-surface:  #ffffff;
+  --bg-elevated: #f8faff;
+  --bg-input:    #ffffff;
+  --bg-hover:    rgba(99,102,241,0.04);
+
+  /* Borders */
+  --border:        rgba(0,0,0,0.07);
+  --border-mid:    rgba(0,0,0,0.13);
+  --border-accent: rgba(99,102,241,0.45);
+
+  /* Text */
+  --text-primary:   #0f172a;
+  --text-secondary: #475569;
+  --text-muted:     #94a3b8;
+
+  /* Accent – Indigo */
+  --accent:       #6366f1;
+  --accent-light: #4f46e5;
+  --accent-dark:  #4338ca;
+  --accent-glow:  rgba(99,102,241,0.09);
+
+  /* Status */
+  --emerald:      #059669;
+  --emerald-glow: rgba(5,150,105,0.08);
+  --amber:        #d97706;
+  --amber-glow:   rgba(217,119,6,0.08);
+  --rose:         #e11d48;
+  --rose-glow:    rgba(225,29,72,0.08);
+  --blue:         #2563eb;
+  --blue-glow:    rgba(37,99,235,0.08);
+
+  /* Sidebar */
+  --sidebar-width: 240px;
+
+  /* Scrollbar */
+  --scrollbar-thumb: rgba(0,0,0,0.12);
+  --scrollbar-hover: rgba(0,0,0,0.22);
+
+  /* Light-only shadow tokens */
+  --shadow-card:    0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.05);
+  --shadow-surface: 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-modal:   0 20px 60px rgba(0,0,0,0.18), 0 4px 16px rgba(0,0,0,0.08);
+}
+
+/* ─── Light Theme Component Overrides ────────────────────────────── */
+
+/* Cards get a professional shadow instead of border-only */
+[data-theme="light"] .card {
+  box-shadow: var(--shadow-card);
+  border-color: rgba(0,0,0,0.06);
+}
+[data-theme="light"] .card:hover {
+  box-shadow: 0 4px 24px rgba(0,0,0,0.1), 0 1px 4px rgba(0,0,0,0.06);
+  border-color: rgba(99,102,241,0.18);
+}
+[data-theme="light"] .card-elevated {
+  box-shadow: var(--shadow-surface);
+}
+[data-theme="light"] .stat-card {
+  box-shadow: var(--shadow-card);
+}
+[data-theme="light"] .stat-card:hover {
+  box-shadow: 0 4px 24px rgba(0,0,0,0.1);
+  border-color: rgba(99,102,241,0.18);
+}
+
+/* Sidebar gets a proper right shadow */
+[data-theme="light"] aside {
+  background: #ffffff !important;
+  border-right-color: rgba(0,0,0,0.07) !important;
+  box-shadow: 2px 0 12px rgba(0,0,0,0.06);
+}
+
+/* Table header subtle background */
+[data-theme="light"] .data-table thead th {
+  background: rgba(99,102,241,0.03);
+  color: #64748b;
+  border-bottom-color: rgba(0,0,0,0.08);
+}
+[data-theme="light"] .data-table tbody td {
+  border-bottom-color: rgba(0,0,0,0.05);
+}
+[data-theme="light"] .data-table tbody tr:hover {
+  background: rgba(99,102,241,0.04);
+}
+
+/* Modal professional shadow */
+[data-theme="light"] .modal-box {
+  box-shadow: var(--shadow-modal);
+  border-color: rgba(0,0,0,0.08);
+}
+[data-theme="light"] .modal-overlay {
+  background: rgba(15,23,42,0.45);
+}
+
+/* Nav links in light mode */
+[data-theme="light"] .nav-link:hover {
+  background: rgba(99,102,241,0.07);
+  color: var(--accent-light);
+}
+[data-theme="light"] .nav-link.active {
+  background: rgba(99,102,241,0.1);
+  color: var(--accent-light);
+}
+
+/* Buttons secondary fix for light */
+[data-theme="light"] .btn-secondary {
+  background: #f8faff;
+  border-color: rgba(0,0,0,0.1);
+  color: #475569;
+}
+[data-theme="light"] .btn-secondary:hover {
+  background: #eef2ff;
+  border-color: rgba(99,102,241,0.3);
+  color: var(--accent-light);
+}
+[data-theme="light"] .btn-primary:hover {
+  background: var(--accent-dark);
+  box-shadow: 0 4px 20px -4px rgba(99,102,241,0.4);
+}
+
+/* Quick action buttons */
+[data-theme="light"] .quick-action-btn {
+  background: #f8faff;
+  border-color: rgba(0,0,0,0.08);
+}
+[data-theme="light"] .quick-action-btn:hover {
+  background: #eef2ff;
+  border-color: rgba(99,102,241,0.25);
+  box-shadow: 0 2px 8px rgba(99,102,241,0.12);
+}
+
+/* Input fields */
+[data-theme="light"] .input {
+  background: #ffffff;
+  border-color: rgba(0,0,0,0.1);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04) inset;
+}
+[data-theme="light"] .input:focus {
+  border-color: rgba(99,102,241,0.5);
+  box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+}
+
+/* Badge slate override for light */
+[data-theme="light"] .badge-slate {
+  background: rgba(100,116,139,0.08);
+  color: #64748b;
+  border-color: rgba(100,116,139,0.15);
+}
+
+/* Alerts */
+[data-theme="light"] .alert-error {
+  background: rgba(225,29,72,0.06);
+  border-color: rgba(225,29,72,0.2);
+  color: #be123c;
+}
+[data-theme="light"] .alert-success {
+  background: rgba(5,150,105,0.07);
+  border-color: rgba(5,150,105,0.2);
+  color: #047857;
+}
+
+/* Tab buttons */
+[data-theme="light"] .tab-btn.active {
+  color: var(--accent-light);
+  border-bottom-color: var(--accent);
+}
+[data-theme="light"] .tab-btn:hover {
+  color: var(--accent-light);
+  background: rgba(99,102,241,0.04);
+  border-radius: 8px 8px 0 0;
+}
+
+/* Avatars in light mode - slightly stronger */
+[data-theme="light"] .avatar-indigo { background: rgba(99,102,241,0.12); color: #4f46e5; }
+[data-theme="light"] .avatar-emerald { background: rgba(5,150,105,0.12); color: #059669; }
+[data-theme="light"] .avatar-rose    { background: rgba(225,29,72,0.1);  color: #e11d48; }
+[data-theme="light"] .avatar-amber   { background: rgba(217,119,6,0.12); color: #d97706; }
+[data-theme="light"] .avatar-blue    { background: rgba(37,99,235,0.1);  color: #2563eb; }
+
+/* Empty state icon */
+[data-theme="light"] .empty-icon {
+  background: #f1f5f9;
+  border-color: rgba(0,0,0,0.07);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+/* Header top bar light */
+[data-theme="light"] header {
+  background: #ffffff !important;
+  border-bottom-color: rgba(0,0,0,0.07) !important;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+}
+
+/* Main content area */
+[data-theme="light"] main {
+  background: #f1f5fb !important;
 }
 
 /* ─── Base ────────────────────────────────────────────────────────── */
@@ -63,11 +271,11 @@ body {
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255,255,255,0.1);
+  background: var(--scrollbar-thumb);
   border-radius: 99px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255,255,255,0.18);
+  background: var(--scrollbar-hover);
 }
 
 /* ─── Utility Classes ─────────────────────────────────────────────── */

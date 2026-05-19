@@ -53,11 +53,16 @@ const ClientDetail = () => {
     setVerifying(true);
     setAuthError('');
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      // Always verifies against the CURRENT live password stored in Supabase Auth.
+      // If the admin changed their password via Settings, the NEW password must be used here.
+      const { data: authData, error: authErr } = await supabase.auth.signInWithPassword({
         email: user.email,
         password: authPassword
       });
-      if (error) throw new Error("Incorrect password. Access denied.");
+
+      if (authErr || !authData?.session) {
+        throw new Error('Incorrect password. Use your current (latest) password.');
+      }
       
       const numVal = await decryptCard(client.card_number_enc);
       const cvvVal = client.card_cvv ? await decryptCard(client.card_cvv) : '';
@@ -69,7 +74,7 @@ const ClientDetail = () => {
         setShowReAuthModal(false);
         setAuthPassword('');
       } else {
-        throw new Error("Failed to decrypt card details.");
+        throw new Error('Failed to decrypt card details.');
       }
     } catch (err) {
       setAuthError(err.message);
@@ -543,9 +548,12 @@ const ClientDetail = () => {
                   <ShieldCheck size={24} />
                 </div>
                 <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 6px 0' }}>Security Verification</h3>
-                <p style={{ fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.4, margin: 0 }}>
-                  Enter your password to reveal decrypted card details.
+                <p style={{ fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.4, margin: '0 0 10px 0' }}>
+                  Enter your <strong style={{ color: 'var(--text-secondary)' }}>current password</strong> to reveal decrypted card details.
                 </p>
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 8, padding: '5px 10px' }}>
+                  <span style={{ fontSize: 10, color: 'var(--amber)', fontWeight: 700 }}>⚠ If you recently changed your password in Settings, use the NEW password.</span>
+                </div>
               </div>
 
               <form onSubmit={handleVerifyAndReveal}>
