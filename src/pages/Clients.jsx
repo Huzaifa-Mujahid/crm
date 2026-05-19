@@ -26,8 +26,8 @@ const SERVICE_OPTIONS = [
   'GOOGLE ADS',
 ];
 
-const AVATAR_BG = ['rgba(99,102,241,0.15)', 'rgba(16,185,129,0.15)', 'rgba(245,158,11,0.15)', 'rgba(59,130,246,0.15)', 'rgba(244,63,94,0.15)'];
-const AVATAR_FG = ['#818cf8', '#34d399', '#fbbf24', '#60a5fa', '#fb7185'];
+const AVATAR_BG = ['var(--accent-glow)', 'var(--emerald-glow)', 'var(--amber-glow)', 'var(--blue-glow)', 'var(--rose-glow)'];
+const AVATAR_FG = ['var(--accent-light)', 'var(--emerald)', 'var(--amber)', 'var(--blue)', 'var(--rose)'];
 const av = (name) => { const i = (name?.charCodeAt(0) || 0) % 5; return [AVATAR_BG[i], AVATAR_FG[i]]; };
 
 /* ── Add Client Modal ─────────────────────────────────────────── */

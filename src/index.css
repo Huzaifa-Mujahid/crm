@@ -60,9 +60,9 @@
   --border-accent: rgba(99,102,241,0.45);
 
   /* Text */
-  --text-primary:   #0f172a;
-  --text-secondary: #475569;
-  --text-muted:     #94a3b8;
+  --text-primary:   #090d16;
+  --text-secondary: #334155;
+  --text-muted:     #64748b;
 
   /* Accent – Indigo */
   --accent:       #6366f1;
@@ -150,8 +150,12 @@
   color: var(--accent-light);
 }
 [data-theme="light"] .nav-link.active {
-  background: rgba(99,102,241,0.1);
+  background: rgba(99,102,241,0.08);
   color: var(--accent-light);
+  border-left: 3px solid var(--accent);
+  border-top-left-radius: 0px;
+  border-bottom-left-radius: 0px;
+  font-weight: 600;
 }
 
 /* Buttons secondary fix for light */

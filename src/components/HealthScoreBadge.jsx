@@ -20,11 +20,11 @@ const HealthScoreBadge = ({ score, compact = false }) => {
 
   return (
     <div className="space-y-1.5">
-      <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-wider text-slate-500">
+      <div className="flex justify-between items-center text-[10px] font-bold uppercase tracking-wider text-[var(--text-secondary)]">
         <span>Health</span>
         <span className={colorClasses.split(' ')[0]}>{score}%</span>
       </div>
-      <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+      <div className="h-1.5 w-full bg-[var(--border)] rounded-full overflow-hidden">
         <div 
           className={`h-full rounded-full transition-all duration-1000 ${colorClasses.split(' ')[1].replace('/10', '')}`}
           style={{ width: `${score}%` }}

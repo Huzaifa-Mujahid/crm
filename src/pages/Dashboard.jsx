@@ -16,7 +16,13 @@ const fmt = (n) => new Intl.NumberFormat('en-US', { style: 'currency', currency:
 const TTStyle = { backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 12, color: 'var(--text-primary)' };
 
 const StatCard = ({ icon: Icon, label, value, color = 'indigo', onClick }) => {
-  const C = { indigo: ['rgba(99,102,241,0.1)', '#818cf8'], emerald: ['rgba(16,185,129,0.1)', '#34d399'], amber: ['rgba(245,158,11,0.1)', '#fbbf24'], rose: ['rgba(244,63,94,0.1)', '#fb7185'], blue: ['rgba(59,130,246,0.1)', '#60a5fa'] };
+  const C = { 
+    indigo: ['var(--accent-glow)', 'var(--accent-light)'], 
+    emerald: ['var(--emerald-glow)', 'var(--emerald)'], 
+    amber: ['var(--amber-glow)', 'var(--amber)'], 
+    rose: ['var(--rose-glow)', 'var(--rose)'], 
+    blue: ['var(--blue-glow)', 'var(--blue)'] 
+  };
   const [bg, fg] = C[color] || C.indigo;
   return (
     <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} className="stat-card" onClick={onClick} style={{ cursor: onClick ? 'pointer' : 'default' }}>
@@ -33,11 +39,16 @@ const StatCard = ({ icon: Icon, label, value, color = 'indigo', onClick }) => {
 
 const QuickAction = ({ icon: Icon, label, desc, path, color = 'indigo' }) => {
   const nav = useNavigate();
-  const C = { indigo: ['rgba(99,102,241,0.1)', '#818cf8'], emerald: ['rgba(16,185,129,0.1)', '#34d399'], amber: ['rgba(245,158,11,0.1)', '#fbbf24'], blue: ['rgba(59,130,246,0.1)', '#60a5fa'] };
+  const C = { 
+    indigo: ['var(--accent-glow)', 'var(--accent-light)'], 
+    emerald: ['var(--emerald-glow)', 'var(--emerald)'], 
+    amber: ['var(--amber-glow)', 'var(--amber)'], 
+    blue: ['var(--blue-glow)', 'var(--blue)'] 
+  };
   const [bg, fg] = C[color] || C.indigo;
   return (
     <button onClick={() => nav(path)} style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 12, padding: '14px 16px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', transition: 'all 0.18s', textAlign: 'left', width: '100%' }}
-      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-mid)'; e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
+      onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--border-mid)'; e.currentTarget.style.background = 'var(--bg-hover)'; }}
       onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--bg-elevated)'; }}>
       <div style={{ width: 36, height: 36, borderRadius: 9, background: bg, color: fg, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Icon size={16} /></div>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -370,7 +381,7 @@ const Dashboard = () => {
                   <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9.5, fill: 'var(--text-muted)' }} />
                   <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-muted)' }} allowDecimals={false} />
-                  <Tooltip contentStyle={TTStyle} cursor={{ fill: 'rgba(255,255,255,0.03)' }}/>
+                  <Tooltip contentStyle={TTStyle} cursor={{ fill: 'var(--bg-hover)', radius: 4 }}/>
                   <Bar dataKey="value" radius={[4, 4, 0, 0]} fill="#6366f1"
                     label={false}
                     cell={(entry) => <rect fill={entry.color} />}
@@ -412,12 +423,12 @@ const Dashboard = () => {
                         <stop offset="100%" stopColor="rgba(129, 140, 248, 0.95)" />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid stroke="rgba(255,255,255,0.03)" strokeDasharray="3 3" horizontal={false} />
+                    <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" horizontal={false} />
                     <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-muted)' }} tickFormatter={v => `$${v}`} />
                     <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-primary)', fontWeight: 600 }} width={80} />
                     <Tooltip 
-                      contentStyle={{ ...TTStyle, backgroundColor: 'rgba(23,23,37,0.95)', backdropFilter: 'blur(8px)', boxShadow: '0 8px 24px rgba(0,0,0,0.3)', border: '1px solid var(--border)' }} 
-                      cursor={{ fill: 'rgba(255,255,255,0.03)', radius: 6 }} 
+                      contentStyle={{ ...TTStyle, backdropFilter: 'blur(8px)', boxShadow: 'var(--shadow-card)' }} 
+                      cursor={{ fill: 'var(--bg-hover)', radius: 6 }} 
                       formatter={v => [`$${v.toLocaleString()}`, 'Revenue']} 
                     />
                     <Bar dataKey="revenue" radius={[0, 6, 6, 0]} fill="url(#clientRevGrad)" barSize={16} />
@@ -444,12 +455,12 @@ const Dashboard = () => {
                         <stop offset="100%" stopColor="rgba(52, 211, 153, 0.95)" />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid stroke="rgba(255,255,255,0.03)" strokeDasharray="3 3" vertical={false} />
+                    <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
                     <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-primary)', fontWeight: 600 }} />
                     <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-muted)' }} allowDecimals={false} />
                     <Tooltip 
-                      contentStyle={{ ...TTStyle, backgroundColor: 'rgba(23,23,37,0.95)', backdropFilter: 'blur(8px)', boxShadow: '0 8px 24px rgba(0,0,0,0.3)', border: '1px solid var(--border)' }} 
-                      cursor={{ fill: 'rgba(255,255,255,0.03)', radius: 6 }} 
+                      contentStyle={{ ...TTStyle, backdropFilter: 'blur(8px)', boxShadow: 'var(--shadow-card)' }} 
+                      cursor={{ fill: 'var(--bg-hover)', radius: 6 }} 
                       formatter={v => [v, 'Clients']} 
                     />
                     <Bar dataKey="value" radius={[6, 6, 0, 0]} fill="url(#cityCountGrad)" barSize={24} />
@@ -471,7 +482,7 @@ const Dashboard = () => {
                 <p className="section-title">Outstanding Client Balances</p>
                 <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Remaining contract amounts (Budget - Collected)</p>
               </div>
-              <button onClick={() => navigate('/payments')} className="text-xs text-indigo-400 font-semibold hover:underline">Receive Payments</button>
+              <button onClick={() => navigate('/payments')} className="text-xs text-[var(--accent-light)] font-semibold hover:underline">Receive Payments</button>
             </div>
             
             {remainingDuesData.length === 0 ? (
@@ -516,7 +527,7 @@ const Dashboard = () => {
                 <p className="section-title">Active Recurring Contracts</p>
                 <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Clients on recurring subscriptions</p>
               </div>
-              <button onClick={() => navigate('/clients')} className="text-xs text-indigo-400 font-semibold hover:underline">View Clients</button>
+              <button onClick={() => navigate('/clients')} className="text-xs text-[var(--accent-light)] font-semibold hover:underline">View Clients</button>
             </div>
 
             {monthlyClientsData.length === 0 ? (
@@ -538,7 +549,7 @@ const Dashboard = () => {
                         </p>
                         <span style={{ 
                           fontSize: 10, fontWeight: 700,
-                          color: 'var(--indigo-light)', background: 'rgba(99,102,241,0.08)',
+                          color: 'var(--accent-light)', background: 'rgba(99,102,241,0.08)',
                           padding: '2px 6px', borderRadius: 4, textTransform: 'uppercase'
                         }}>
                           {sub.type}
@@ -574,7 +585,7 @@ const Dashboard = () => {
         <div className="card" style={{ padding: 24 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
             <p className="section-title">{isAdmin ? 'Recent Team Tasks' : 'My Assigned Tasks'}</p>
-            <button onClick={() => navigate('/projects')} className="text-xs text-indigo-400 font-semibold hover:underline">View All</button>
+            <button onClick={() => navigate('/projects')} className="text-xs text-[var(--accent-light)] font-semibold hover:underline">View All</button>
           </div>
           
           <div className="overflow-hidden">

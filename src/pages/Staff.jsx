@@ -170,50 +170,50 @@ const Staff = () => {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-[rgba(255,255,255,0.02)]">
-                <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-slate-500">User Name</th>
-                <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-slate-500">Login Key</th>
-                <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-slate-500">Role</th>
-                <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-slate-500">Status</th>
-                <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-slate-500">Created</th>
-                <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-slate-500 text-right">Actions</th>
+                <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">User Name</th>
+                <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Login Key</th>
+                <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Role</th>
+                <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Status</th>
+                <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)]">Created</th>
+                <th className="px-6 py-4 text-[11px] font-bold uppercase tracking-wider text-[var(--text-muted)] text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[var(--border)]">
               {loading ? (
                 Array(3).fill(0).map((_, i) => (
                   <tr key={i} className="animate-pulse">
-                    <td className="px-6 py-5"><div className="h-4 bg-slate-800 rounded w-32"></div></td>
-                    <td className="px-6 py-5"><div className="h-4 bg-slate-800 rounded w-20"></div></td>
-                    <td className="px-6 py-5"><div className="h-6 bg-slate-800 rounded-full w-20"></div></td>
-                    <td className="px-6 py-5"><div className="h-4 bg-slate-800 rounded w-16"></div></td>
+                    <td className="px-6 py-5"><div className="h-4 bg-[var(--border)] rounded w-32"></div></td>
+                    <td className="px-6 py-5"><div className="h-4 bg-[var(--border)] rounded w-20"></div></td>
+                    <td className="px-6 py-5"><div className="h-6 bg-[var(--border)] rounded-full w-20"></div></td>
+                    <td className="px-6 py-5"><div className="h-4 bg-[var(--border)] rounded w-16"></div></td>
                     <td className="px-6 py-5"></td>
                     <td className="px-6 py-5"></td>
                   </tr>
                 ))
               ) : filteredKeys.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="px-6 py-20 text-center text-slate-500">No user keys found. Create one to get started.</td>
+                  <td colSpan="6" className="px-6 py-20 text-center text-[var(--text-muted)]">No user keys found. Create one to get started.</td>
                 </tr>
               ) : (
                 filteredKeys.map((s) => (
                   <tr key={s.id} className="hover:bg-[rgba(255,255,255,0.01)] transition-colors">
                     <td className="px-6 py-5">
                       <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 font-bold text-sm">
+                        <div className="w-9 h-9 rounded-full bg-[var(--accent-glow)] border border-[var(--border-accent)] flex items-center justify-center text-[var(--accent-light)] font-bold text-sm">
                           {(s.full_name?.trim()?.[0] || 'S').toUpperCase()}
                         </div>
-                        <span className="text-sm font-semibold text-white">{s.full_name}</span>
+                        <span className="text-sm font-semibold text-[var(--text-primary)]">{s.full_name}</span>
                       </div>
                     </td>
                     <td className="px-6 py-5">
                       <div className="flex items-center gap-2">
-                        <div className="flex items-center gap-2 font-mono text-indigo-400 font-bold tracking-widest bg-indigo-500/5 px-2 py-1 rounded border border-indigo-500/10 w-fit">
+                        <div className="flex items-center gap-2 font-mono text-[var(--accent-light)] font-bold tracking-widest bg-[var(--accent-glow)] px-2 py-1 rounded border border-[var(--border-accent)] w-fit">
                           <Key size={12} className="opacity-50" />
                           {revealedKeys[s.id] ? s.key : '••••••'}
                         </div>
                         <button
                           onClick={() => toggleReveal(s.id)}
-                          className="text-xs text-slate-500 hover:text-indigo-400 transition-colors px-2 py-1 rounded border border-slate-700 hover:border-indigo-500/30"
+                          className="text-xs text-[var(--text-secondary)] hover:text-[var(--accent-light)] transition-colors px-2 py-1 rounded border border-[var(--border)] hover:border-[var(--border-accent)]"
                           title={revealedKeys[s.id] ? 'Hide Key' : 'Reveal Key'}
                         >
                           {revealedKeys[s.id] ? 'Hide' : 'Reveal'}
@@ -222,8 +222,8 @@ const Staff = () => {
                     </td>
                     <td className="px-6 py-5">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                        s.role === 'Manager' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
-                        'bg-slate-500/10 text-slate-400 border border-slate-500/20'
+                        s.role === 'Manager' ? 'bg-[var(--amber-glow)] text-[var(--amber)] border border-[var(--amber-glow)]' :
+                        'bg-[var(--border)] text-[var(--text-secondary)] border border-[var(--border)]'
                       }`}>
                         {s.role}
                       </span>
@@ -231,25 +231,25 @@ const Staff = () => {
                     <td className="px-6 py-5">
                       <button 
                         onClick={() => handleToggleStatus(s.id, s.is_active)}
-                        className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded ${s.is_active ? 'text-emerald-500 bg-emerald-500/10' : 'text-slate-500 bg-slate-500/10'}`}
+                        className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded border ${s.is_active ? 'text-[var(--emerald)] bg-[var(--emerald-glow)] border-[var(--emerald-glow)]' : 'text-[var(--text-secondary)] bg-[var(--bg-hover)] border-[var(--border)]'}`}
                       >
                         {s.is_active ? 'Active' : 'Inactive'}
                       </button>
                     </td>
-                    <td className="px-6 py-5 text-xs text-slate-500">
+                    <td className="px-6 py-5 text-xs text-[var(--text-secondary)]">
                       {new Date(s.created_at).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-5 text-right flex items-center justify-end gap-2">
                       <button 
                         onClick={() => openEdit(s)}
-                        className="p-2 text-slate-400 hover:text-indigo-400 transition-colors" 
+                        className="p-2 text-[var(--text-secondary)] hover:text-[var(--accent-light)] transition-colors" 
                         title="Edit User"
                       >
                         <Edit2 size={16} />
                       </button>
                       <button 
                         onClick={() => handleDeleteKey(s.id)}
-                        className="p-2 text-slate-400 hover:text-rose-400 transition-colors" 
+                        className="p-2 text-[var(--text-secondary)] hover:text-[var(--rose)] transition-colors" 
                         title="Delete Key"
                       >
                         <Trash2 size={16} />
@@ -269,7 +269,7 @@ const Staff = () => {
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="modal-box max-w-md">
               <div className="modal-header">
                 <span className="modal-title">{isEdit ? 'Update User Access' : 'Create New User Key'}</span>
-                <button onClick={() => setIsModalOpen(false)} className="text-slate-500 hover:text-white"><X size={18} /></button>
+                <button onClick={() => setIsModalOpen(false)} className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"><X size={18} /></button>
               </div>
               <form onSubmit={handleCreateKey}>
                 <div className="modal-body flex flex-col gap-4">
@@ -306,7 +306,7 @@ const Staff = () => {
                   <div>
                     <label className="label flex justify-between">
                       Login Key (6 Digits)
-                      <button type="button" onClick={generateKey} className="text-indigo-400 hover:text-indigo-300">Regenerate</button>
+                      <button type="button" onClick={generateKey} className="text-[var(--accent-light)] hover:text-[var(--accent)]">Regenerate</button>
                     </label>
                     <input 
                       className="input font-mono font-bold tracking-widest text-center text-lg" 
@@ -334,23 +334,23 @@ const Staff = () => {
 
       <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="card p-6 bg-gradient-to-br from-indigo-500/5 to-transparent border-indigo-500/10">
-          <Shield size={24} className="text-indigo-400 mb-4" />
-          <h3 className="text-sm font-bold text-white mb-2">Role Permissions</h3>
-          <p className="text-xs text-slate-400 leading-relaxed">
+          <Shield size={24} className="text-[var(--accent-light)] mb-4" />
+          <h3 className="text-sm font-bold text-[var(--text-primary)] mb-2">Role Permissions</h3>
+          <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
             Admins have full access. Managers can view all clients but cannot manage users. Users only see their assigned data.
           </p>
         </div>
         <div className="card p-6 bg-gradient-to-br from-emerald-500/5 to-transparent border-emerald-500/10">
-          <Users size={24} className="text-emerald-400 mb-4" />
-          <h3 className="text-sm font-bold text-white mb-2">Team Efficiency</h3>
-          <p className="text-xs text-slate-400 leading-relaxed">
+          <Users size={24} className="text-[var(--emerald)] mb-4" />
+          <h3 className="text-sm font-bold text-[var(--text-primary)] mb-2">Team Efficiency</h3>
+          <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
             Assigning clients and tasks to specific roles ensures better accountability and specialized customer success.
           </p>
         </div>
         <div className="card p-6 bg-gradient-to-br from-amber-500/5 to-transparent border-amber-500/10">
-          <AlertCircle size={24} className="text-amber-400 mb-4" />
-          <h3 className="text-sm font-bold text-white mb-2">Audit Logs</h3>
-          <p className="text-xs text-slate-400 leading-relaxed">
+          <AlertCircle size={24} className="text-[var(--amber)] mb-4" />
+          <h3 className="text-sm font-bold text-[var(--text-primary)] mb-2">Audit Logs</h3>
+          <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
             Every action taken by a user is recorded in the activity log for administrative review and quality control.
           </p>
         </div>

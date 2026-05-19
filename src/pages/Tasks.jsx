@@ -11,10 +11,10 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 
 const PRIORITY_COLORS = {
-  Low: 'bg-slate-500/10 text-slate-400 border-slate-500/20',
-  Medium: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20',
-  High: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-  Urgent: 'bg-rose-500/10 text-rose-400 border-rose-500/20',
+  Low: 'bg-[var(--border)] text-[var(--text-secondary)] border border-[var(--border)]',
+  Medium: 'bg-[var(--accent-glow)] text-[var(--accent-light)] border border-[var(--border-accent)]',
+  High: 'bg-[var(--amber-glow)] text-[var(--amber)] border border-[var(--amber-glow)]',
+  Urgent: 'bg-[var(--rose-glow)] text-[var(--rose)] border border-[var(--rose-glow)]',
 };
 
 const Tasks = () => {
@@ -226,7 +226,7 @@ const Tasks = () => {
                 
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
-                    <div style={{ width: 40, height: 40, borderRadius: 10, background: isCompleted ? 'rgba(100,116,139,0.1)' : 'rgba(99,102,241,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: isCompleted ? '#64748b' : 'var(--accent-light)', flexShrink: 0 }}>
+                    <div style={{ width: 40, height: 40, borderRadius: 10, background: isCompleted ? 'var(--bg-hover)' : 'var(--accent-glow)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: isCompleted ? 'var(--text-muted)' : 'var(--accent-light)', flexShrink: 0 }}>
                       <CheckSquare size={18} />
                     </div>
                     <div style={{ minWidth: 0 }}>
@@ -240,7 +240,7 @@ const Tasks = () => {
                 </div>
 
                 {task.description && (
-                  <div style={{ marginTop: 4, marginBottom: 12, padding: '10px 12px', background: 'rgba(0,0,0,0.15)', borderRadius: 8, border: '1px solid var(--border)' }}>
+                  <div style={{ marginTop: 4, marginBottom: 12, padding: '10px 12px', background: 'var(--bg-elevated)', borderRadius: 8, border: '1px solid var(--border)' }}>
                     <p style={{ fontSize: 9.5, color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>Description</p>
                     <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0, whiteSpace: 'pre-wrap' }}>{task.description}</p>
                   </div>
