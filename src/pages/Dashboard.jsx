@@ -62,7 +62,7 @@ const QuickAction = ({ icon: Icon, label, desc, path, color = 'indigo' }) => {
 };
 
 const Dashboard = () => {
-  const { user, role, isAdmin: authIsAdmin, isManager: authIsManager } = useAuth();
+  const { user, role, userFullName, isAdmin: authIsAdmin, isManager: authIsManager } = useAuth();
   const isAdmin = authIsAdmin;
   const isManager = authIsManager;
   const isStaff = !isAdmin && !isManager;
@@ -326,7 +326,7 @@ const Dashboard = () => {
     <div className="animate-in" style={{ paddingBottom: 40 }}>
       <div style={{ marginBottom: 28, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
-          <h1 className="page-title">Welcome back, {user?.user_metadata?.full_name ? user.user_metadata.full_name.split(' ')[0] : 'User'}!</h1>
+          <h1 className="page-title">Welcome back, {userFullName ? userFullName.split(' ')[0] : 'User'}!</h1>
           <p className="page-subtitle">Here is what's happening with your accounts today.</p>
         </div>
         <div style={{ padding: '8px 16px', background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 12, display: 'flex', alignItems: 'center', gap: 8 }}>

@@ -6,6 +6,7 @@ const AuthContext = createContext();
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
+  const [userFullName, setUserFullName] = useState('');
   const [loading, setLoading] = useState(true);
 
   const fetchRole = async (u) => {
@@ -17,6 +18,7 @@ export const AuthProvider = ({ children }) => {
     // Instant Admin check for the specific user requested
     if (u.email === 'digital@crm.com') {
       setRole('Admin');
+      setUserFullName('Admin User');
       setLoading(false);
       return;
     }
@@ -30,12 +32,15 @@ export const AuthProvider = ({ children }) => {
       
       if (data) {
         setRole(data.role);
+        setUserFullName(data.full_name || u.user_metadata?.full_name);
       } else {
         setRole('Employee');
+        setUserFullName(u.user_metadata?.full_name);
       }
     } catch (err) {
       console.error('Error fetching role:', err);
       setRole('Employee');
+      setUserFullName(u.user_metadata?.full_name);
     } finally {
       setLoading(false);
     }
@@ -61,6 +66,7 @@ export const AuthProvider = ({ children }) => {
         fetchRole(u);
       } else {
         setRole(null);
+        setUserFullName('');
         setLoading(false);
       }
     });
@@ -166,6 +172,7 @@ export const AuthProvider = ({ children }) => {
   const value = {
     user,
     role,
+    userFullName,
     isAdmin: role === 'Admin',
     isManager: role === 'Manager',
     signIn,

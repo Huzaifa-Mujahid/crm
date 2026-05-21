@@ -101,7 +101,7 @@ const ThemeToggle = () => {
 
 /* ── Sidebar Component ─────────────────────────────────────────── */
 const Sidebar = ({ open, onClose }) => {
-  const { user, role, signOut, isAdmin } = useAuth();
+  const { user, role, userFullName, signOut, isAdmin } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const canAddClient = ['Admin', 'Manager', 'Customer Success Manager', 'Sales Agent', 'Sales Closer'].includes(role);
@@ -110,7 +110,7 @@ const Sidebar = ({ open, onClose }) => {
     try { await signOut(); navigate('/login'); } catch (e) { console.error(e); }
   };
 
-  const fullName = user?.user_metadata?.full_name;
+  const fullName = userFullName || user?.user_metadata?.full_name;
   const initial = fullName?.trim()?.[0]?.toUpperCase() || user?.email?.trim()?.[0]?.toUpperCase() || 'U';
   const colorClass = avatarColor(user?.email);
   const displayEmail = user?.email || '';
