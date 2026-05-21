@@ -104,6 +104,7 @@ const Sidebar = ({ open, onClose }) => {
   const { user, role, signOut, isAdmin } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const canAddClient = ['Admin', 'Manager', 'Customer Success Manager', 'Sales Agent', 'Sales Closer'].includes(role);
 
   const handleLogout = async () => {
     try { await signOut(); navigate('/login'); } catch (e) { console.error(e); }
@@ -184,10 +185,12 @@ const Sidebar = ({ open, onClose }) => {
             <div style={{ marginTop: 24, padding: '0 10px' }}>
               <p className="nav-group-label" style={{ marginBottom: 12 }}>Quick Actions</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <NavLink to="/clients?new=true" className="quick-action-btn">
-                  <Users size={14} />
-                  <span>+ Add Client</span>
-                </NavLink>
+                {canAddClient && (
+                  <NavLink to="/clients?new=true" className="quick-action-btn">
+                    <Users size={14} />
+                    <span>+ Add Client</span>
+                  </NavLink>
+                )}
                 <NavLink to="/tasks?new=true" className="quick-action-btn">
                   <CheckSquare size={14} />
                   <span>+ New Task</span>

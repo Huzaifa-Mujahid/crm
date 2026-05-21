@@ -84,6 +84,8 @@ const AddClientModal = ({ onClose, onSaved }) => {
     payment_type: 'One-time',
     payment_due_date: '',
   });
+
+  const isCardPayment = ['Visa', 'MasterCard', 'AMEX', 'Discover'].includes(form.payment_method);
   const [staffList, setStaffList] = useState([]);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState(null);
@@ -371,26 +373,23 @@ const AddClientModal = ({ onClose, onSaved }) => {
                   <CreditCard size={15} /> 2. Payment & Billing Information
                 </h3>
                 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
                   <div>
                     <label className="label">Payment Options</label>
                     <select className="input" value={form.payment_method} onChange={e => up('payment_method', e.target.value)}>
                       <option value="">Select Option...</option>
-                      <option value="Card">Visa/MasterCard/AMEX/Discover</option>
+                      <option value="Visa">Visa</option>
+                      <option value="MasterCard">MasterCard</option>
+                      <option value="AMEX">AMEX</option>
+                      <option value="Discover">Discover</option>
                       <option value="Merchant Link">Merchant Link</option>
                       <option value="Wire Transfer">Wire Transfer</option>
                       <option value="PayPal">PayPal</option>
                     </select>
                   </div>
-                  {(form.payment_method === 'Card' || form.payment_method === 'Merchant Link') && (
-                    <div>
-                      <label className="label">Billing Zipcode</label>
-                      <input className="input" value={form.billing_zip} onChange={e => up('billing_zip', e.target.value)} placeholder="10001" />
-                    </div>
-                  )}
                 </div>
 
-                {form.payment_method === 'Card' && (
+                {isCardPayment && (
                   <div style={{ padding: 14, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 12 }}>
                     <div>
                       <label className="label">Card Number</label>
@@ -618,7 +617,8 @@ const AddClientModal = ({ onClose, onSaved }) => {
 
 /* ── Clients Page ─────────────────────────────────────────────── */
 const Clients = () => {
-  const { isAdmin } = useAuth();
+  const { isAdmin, role } = useAuth();
+  const canAddClient = ['Admin', 'Manager', 'Customer Success Manager', 'Sales Agent', 'Sales Closer'].includes(role);
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -632,12 +632,12 @@ const Clients = () => {
 
     // Handle Quick Action
     const params = new URLSearchParams(location.search);
-    if (params.get('new') === 'true') {
+    if (params.get('new') === 'true' && canAddClient) {
       setShowModal(true);
       // Clear the param from URL
       navigate(location.pathname, { replace: true });
     }
-  }, [location.search]);
+  }, [location.search, role]);
 
   const fetchClients = async () => {
     setLoading(true);
@@ -663,7 +663,7 @@ const Clients = () => {
           <p className="page-subtitle">{clients.length} client{clients.length !== 1 ? 's' : ''} in your database</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-primary" onClick={() => setShowModal(true)}><Plus size={15} />Add Client</button>
+          {canAddClient && <button className="btn btn-primary" onClick={() => setShowModal(true)}><Plus size={15} />Add Client</button>}
         </div>
       </div>
 
@@ -694,7 +694,7 @@ const Clients = () => {
             <div className="empty-icon"><Search size={22} /></div>
             <p className="empty-title">No clients found</p>
             <p className="empty-desc">{search || statusFilter ? 'Try adjusting your search or filter.' : 'Add your first client to get started.'}</p>
-            {!search && !statusFilter && <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => setShowModal(true)}><Plus size={14} />Add Client</button>}
+            {!search && !statusFilter && canAddClient && <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => setShowModal(true)}><Plus size={14} />Add Client</button>}
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>

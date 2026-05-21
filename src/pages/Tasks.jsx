@@ -29,6 +29,10 @@ const Tasks = () => {
   const [clients, setClients] = useState([]);
   const [activeTab, setActiveTab] = useState('Upcoming');
 
+  const [isCompletionModalOpen, setIsCompletionModalOpen] = useState(false);
+  const [completionTaskId, setCompletionTaskId] = useState(null);
+  const [completionNote, setCompletionNote] = useState('');
+
   const [newTask, setNewTask] = useState({
     id: null,
     title: '',
@@ -153,9 +157,53 @@ const Tasks = () => {
   };
 
   const toggleTaskStatus = async (taskId, currentStatus) => {
-    const newStatus = currentStatus === 'Completed' ? 'Pending' : 'Completed';
-    await supabase.from('tasks').update({ status: newStatus }).eq('id', taskId);
-    fetchTasks();
+    if (currentStatus === 'Completed') {
+      try {
+        const { error } = await supabase.from('tasks')
+          .update({ 
+            status: 'Pending',
+            completion_note: null,
+            completed_at: null,
+            completed_by: null
+          })
+          .eq('id', taskId);
+        if (error) throw error;
+        fetchTasks();
+      } catch (err) {
+        alert(err.message);
+      }
+    } else {
+      setCompletionTaskId(taskId);
+      setCompletionNote('');
+      setIsCompletionModalOpen(true);
+    }
+  };
+
+  const handleCompleteTaskWithNote = async (e) => {
+    e.preventDefault();
+    if (!completionTaskId) return;
+    try {
+      setSaving(true);
+      const note = completionNote.trim() || 'Task completed';
+      const { error } = await supabase.from('tasks')
+        .update({
+          status: 'Completed',
+          completion_note: note,
+          completed_at: new Date().toISOString(),
+          completed_by: user.id
+        })
+        .eq('id', completionTaskId);
+      if (error) throw error;
+      
+      setIsCompletionModalOpen(false);
+      setCompletionTaskId(null);
+      setCompletionNote('');
+      fetchTasks();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const filteredTasks = tasks.filter(t => {
@@ -362,6 +410,42 @@ const Tasks = () => {
                   <button type="button" className="btn btn-secondary" onClick={() => setIsModalOpen(false)}>Cancel</button>
                   <button type="submit" className="btn btn-primary min-w-[120px]" disabled={saving}>
                     {saving ? <Loader2 size={16} className="animate-spin mr-2" /> : (isEdit ? 'Update Task' : 'Create Task')}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Task Completion Note Modal */}
+      <AnimatePresence>
+        {isCompletionModalOpen && (
+          <div className="modal-overlay">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="modal-box max-w-md">
+              <div className="modal-header">
+                <span className="modal-title">Complete Task</span>
+                <button onClick={() => { setIsCompletionModalOpen(false); setCompletionTaskId(null); }} className="text-slate-500 hover:text-white"><X size={18} /></button>
+              </div>
+              <form onSubmit={handleCompleteTaskWithNote}>
+                <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+                    Would you like to add any notes or details about completing this task?
+                  </p>
+                  <div>
+                    <label className="label">Completion Note (Optional)</label>
+                    <textarea 
+                      className="input min-h-[100px]" 
+                      placeholder="e.g. Completed the documentation and updated the client record. Defaults to 'Task completed'" 
+                      value={completionNote} 
+                      onChange={e => setCompletionNote(e.target.value)} 
+                    />
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button type="button" className="btn btn-secondary" onClick={() => { setIsCompletionModalOpen(false); setCompletionTaskId(null); }}>Cancel</button>
+                  <button type="submit" className="btn btn-primary min-w-[120px]" disabled={saving}>
+                    {saving ? <Loader2 size={16} className="animate-spin mr-2" /> : 'Complete Task'}
                   </button>
                 </div>
               </form>

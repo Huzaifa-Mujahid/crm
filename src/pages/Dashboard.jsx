@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import {
   Users, Briefcase, Clock, DollarSign,
   TrendingUp, Calendar, MessageSquare, ChevronRight,
+  CheckCircle2, FileText,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
@@ -76,6 +77,7 @@ const Dashboard = () => {
   const [cityData, setCityData] = useState([]);
   const [remainingDuesData, setRemainingDuesData] = useState([]);
   const [monthlyClientsData, setMonthlyClientsData] = useState([]);
+  const [completedTasks, setCompletedTasks] = useState([]);
   const navigate = useNavigate();
 
   useEffect(() => { 
@@ -120,14 +122,24 @@ const Dashboard = () => {
         }
       }
 
-      const [resC, resP, resRev, resProj, resOver, resTasks, resStaff] = await Promise.all([
+      const completedTasksQuery = (isAdmin || isManager)
+        ? supabase
+            .from('tasks')
+            .select('id, title, completion_note, completed_at, completed_by, assigned_to, created_by, clients(full_name)')
+            .eq('status', 'Completed')
+            .order('completed_at', { ascending: false })
+            .limit(8)
+        : Promise.resolve({ data: [] });
+
+      const [resC, resP, resRev, resProj, resOver, resTasks, resStaff, resCompleted] = await Promise.all([
         clientsQuery,
         projectsQuery,
         paymentsQuery,
         projStatusQuery,
         overdueQuery,
         tasksQuery,
-        supabase.from('user_roles').select('user_id, full_name')
+        supabase.from('user_roles').select('user_id, full_name'),
+        completedTasksQuery
       ]);
 
       const c = (isAdmin || isManager) ? (resC?.data?.length || 0) : (resC?.count || 0);
@@ -137,6 +149,7 @@ const Dashboard = () => {
       const overdueCount = resOver?.count || 0;
       const taskRows = resTasks?.data || [];
       const staffRows = resStaff?.data || [];
+      const completedTaskRows = resCompleted?.data || [];
 
       const revenue = revData.filter(x => x.is_paid).reduce((s, x) => s + (x.amount || 0), 0);
       const counts = { Pending: 0, 'In Progress': 0, Completed: 0, Cancelled: 0 };
@@ -151,6 +164,7 @@ const Dashboard = () => {
       setStats({ clients: c, projects: p, revenue, overdue: overdueCount });
       setMyTasks(taskRows);
       setStaffList(staffRows);
+      setCompletedTasks(completedTaskRows);
 
       // Admin/Manager Special Charts Calculation
       if (isAdmin || isManager) {
@@ -585,7 +599,7 @@ const Dashboard = () => {
         <div className="card" style={{ padding: 24 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
             <p className="section-title">{isAdmin ? 'Recent Team Tasks' : 'My Assigned Tasks'}</p>
-            <button onClick={() => navigate('/projects')} className="text-xs text-[var(--accent-light)] font-semibold hover:underline">View All</button>
+            <button onClick={() => navigate('/tasks')} className="text-xs text-[var(--accent-light)] font-semibold hover:underline">View All</button>
           </div>
           
           <div className="overflow-hidden">
@@ -602,7 +616,7 @@ const Dashboard = () => {
                     background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)' 
                   }}>
                     <div style={{ 
-                      width: 8, height: 8, borderRadius: '50%', 
+                      width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
                       background: task.status === 'Completed' ? '#10b981' : task.status === 'Pending' ? '#f59e0b' : '#6366f1' 
                     }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -630,14 +644,88 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {!isAdmin && (
+        {/* Right column: Admin/Manager → Completed Tasks feed | Staff → Quick Actions */}
+        {(isAdmin || isManager) ? (
+          <div className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <div>
+                <p className="section-title">Staff Task Completions</p>
+                <p style={{ fontSize: 11.5, color: 'var(--text-muted)', marginTop: 2 }}>Recently completed by team</p>
+              </div>
+              <button onClick={() => navigate('/staff')} className="text-xs text-[var(--accent-light)] font-semibold hover:underline">View All</button>
+            </div>
+
+            {completedTasks.length === 0 ? (
+              <div className="empty-state" style={{ flex: 1, padding: '20px 0' }}>
+                <div className="empty-icon"><CheckCircle2 size={20} /></div>
+                <p className="empty-desc">No completed tasks yet.</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto' }}>
+                {completedTasks.map(task => {
+                  const completer = staffList.find(s => s.user_id === task.completed_by);
+                  const creator   = staffList.find(s => s.user_id === task.created_by);
+                  return (
+                    <div key={task.id} style={{
+                      padding: '11px 13px', borderRadius: 10,
+                      background: 'rgba(16,185,129,0.04)',
+                      border: '1px solid rgba(16,185,129,0.12)',
+                    }}>
+                      {/* Task title */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 5 }}>
+                        <CheckCircle2 size={13} style={{ color: 'var(--emerald)', flexShrink: 0 }} />
+                        <p style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
+                          {task.title}
+                        </p>
+                      </div>
+
+                      {/* Completer + time */}
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', marginBottom: task.completion_note ? 7 : 0 }}>
+                        {completer && (
+                          <span style={{ fontSize: 11, color: 'var(--emerald)', fontWeight: 600 }}>
+                            ✓ {completer.full_name}
+                          </span>
+                        )}
+                        {creator && completer?.user_id !== creator?.user_id && (
+                          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                            by {creator.full_name}
+                          </span>
+                        )}
+                        {task.clients?.full_name && (
+                          <span style={{ fontSize: 11, color: 'var(--accent-light)', fontWeight: 600 }}>
+                            📁 {task.clients.full_name}
+                          </span>
+                        )}
+                        {task.completed_at && (
+                          <span style={{ fontSize: 10.5, color: 'var(--text-muted)' }}>
+                            {new Date(task.completed_at).toLocaleDateString([], { month: 'short', day: 'numeric' })} {new Date(task.completed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Completion note */}
+                      {task.completion_note && (
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 6, padding: '6px 9px', background: 'rgba(16,185,129,0.07)', borderRadius: 7, border: '1px solid rgba(16,185,129,0.1)' }}>
+                          <FileText size={11} style={{ color: 'var(--emerald)', marginTop: 1, flexShrink: 0 }} />
+                          <p style={{ fontSize: 11.5, color: 'var(--text-secondary)', lineHeight: 1.45, margin: 0 }}>
+                            {task.completion_note}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : (
           <div className="card" style={{ padding: 24 }}>
             <p className="section-title" style={{ marginBottom: 14 }}>Quick Actions</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <QuickAction icon={Users}         label="Clients"      desc="View your database"   path="/clients"      color="indigo" />
-              <QuickAction icon={Briefcase}     label="Projects"     desc="Track status"     path="/projects"     color="blue" />
-              <QuickAction icon={Calendar}      label="Meetings"    desc="Book appointments"         path="/meetings"     color="emerald" />
-              <QuickAction icon={MessageSquare} label="Log Interaction"     desc="Record comms"         path="/interactions" color="amber" />
+              <QuickAction icon={Users}         label="Clients"         desc="View your database"  path="/clients"      color="indigo" />
+              <QuickAction icon={Briefcase}     label="Projects"        desc="Track status"        path="/projects"     color="blue" />
+              <QuickAction icon={Calendar}      label="Meetings"        desc="Book appointments"   path="/meetings"     color="emerald" />
+              <QuickAction icon={MessageSquare} label="Log Interaction" desc="Record comms"        path="/interactions" color="amber" />
             </div>
           </div>
         )}
