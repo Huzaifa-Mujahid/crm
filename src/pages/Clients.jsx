@@ -35,7 +35,8 @@ const AddClientModal = ({ onClose, onSaved }) => {
   const { user, isAdmin, isManager, role } = useAuth();
   const isCS = role === 'Customer Success Manager';
   const isCloser = role === 'Sales Closer';
-  const canHandlePayment = isAdmin || isManager || isCS || isCloser;
+  const isAgent = role === 'Sales Agent';
+  const canHandlePayment = isAdmin || isManager || isCS || isCloser || isAgent;
   const [customService, setCustomService] = useState(false);
 
   const [form, setForm] = useState({ 

@@ -8,7 +8,7 @@ import { useAuth } from '../hooks/useAuth';
 const TYPES = ['Call', 'Email', 'Meeting', 'Note'];
 
 const InteractionModal = ({ form, setForm, clients, saving, err, onSave, onClose }) => (
-  <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+  <div className="modal-overlay">
     <motion.div initial={{ opacity: 0, scale: 0.96, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }} className="modal-box">
       <div className="modal-header">
         <span className="modal-title">Log Interaction</span>

@@ -568,7 +568,7 @@ const Staff = () => {
       {/* Create/Edit Key Modal */}
       <AnimatePresence>
         {isModalOpen && (
-          <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setIsModalOpen(false)}>
+          <div className="modal-overlay">
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="modal-box max-w-md">
               <div className="modal-header">
                 <span className="modal-title">{isEdit ? 'Update User Access' : 'Create New User Key'}</span>
