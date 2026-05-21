@@ -81,7 +81,12 @@ const Tasks = () => {
   };
 
   const fetchStaff = async () => {
-    const { data } = await supabase.from('user_roles').select('user_id, full_name, role');
+    // Read from staff_keys (always populated on create) so ALL staff — including
+    // Employees who haven't logged in yet — appear in the assignment dropdown.
+    const { data } = await supabase
+      .from('staff_keys')
+      .select('user_id, full_name, role')
+      .eq('is_active', true);
     setStaffList(data || []);
   };
 

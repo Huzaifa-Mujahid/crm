@@ -126,40 +126,50 @@ export const AuthProvider = ({ children }) => {
       throw new Error('Invalid Username, Password, or Role selection.');
     }
 
-    // 2. If valid, we need to sign them in. 
-    // In a real app, each staff would have a Supabase user linked to their key.
-    // For this prototype, we'll use a generic staff email based on the key if no user_id is linked.
-    const staffEmail = `staff_${key}@crm.com`;
-    const staffPassword = `password_${key}`; // Simple derivation for prototype
+    // 2. Use the unique key-row UUID (keyData.id) — NOT the 6-digit key — to derive the
+    //    Supabase Auth email. This prevents account collisions when a 6-digit key is
+    //    deleted and re-issued to a different employee (e.g. haris → ali).
+    const staffEmail = `staff_${keyData.id}@crm.com`;
+    const staffPassword = `staffpass_${keyData.id}`;
+
+    const syncUserRoles = async (userId) => {
+      // Always keep user_roles in sync so the dashboard shows correct identity
+      await supabase.from('user_roles').upsert(
+        {
+          user_id: userId,
+          role: keyData.role,
+          full_name: keyData.full_name || 'Staff Member',
+          email: staffEmail,
+        },
+        { onConflict: 'user_id' }
+      );
+      // Link staff_keys row to auth user if not already linked
+      if (!keyData.user_id) {
+        await supabase.from('staff_keys').update({ user_id: userId }).eq('id', keyData.id);
+      }
+    };
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({ 
-        email: staffEmail, 
-        password: staffPassword 
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: staffEmail,
+        password: staffPassword,
       });
       if (error) throw error;
+
+      // Always sync on every login so name/role changes are reflected immediately
+      await syncUserRoles(data.user.id);
       return data;
     } catch (err) {
-      // If user doesn't exist, try to sign up
+      // Auth user doesn't exist yet — sign up first
       const { data, error } = await supabase.auth.signUp({
         email: staffEmail,
         password: staffPassword,
-        options: { data: { full_name: keyData.full_name || 'Staff Member' } }
-      });
-      
-      if (error) throw error;
-      
-      // Update key with user_id
-      await supabase.from('staff_keys').update({ user_id: data.user.id }).eq('id', keyData.id);
-      
-      // Ensure role is set in user_roles
-      await supabase.from('user_roles').upsert({
-        user_id: data.user.id,
-        role: role,
-        full_name: keyData.full_name || 'Staff Member',
-        email: staffEmail
+        options: { data: { full_name: keyData.full_name || 'Staff Member' } },
       });
 
+      if (error) throw error;
+
+      await syncUserRoles(data.user.id);
       return data;
     }
   };

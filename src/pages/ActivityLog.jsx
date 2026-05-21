@@ -53,7 +53,7 @@ const ActivityLog = () => {
     try {
       const [{ data: logsData }, { data: staffData }] = await Promise.all([
         supabase.from('activity_log').select('*').order('performed_at', { ascending: false }).limit(200),
-        supabase.from('user_roles').select('user_id, full_name, role')
+        supabase.from('staff_keys').select('user_id, full_name, role').eq('is_active', true)
       ]);
 
       const staffMap = (staffData || []).reduce((acc, curr) => ({ ...acc, [curr.user_id]: curr }), {});

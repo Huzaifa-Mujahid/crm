@@ -138,7 +138,7 @@ const Dashboard = () => {
         projStatusQuery,
         overdueQuery,
         tasksQuery,
-        supabase.from('user_roles').select('user_id, full_name'),
+        supabase.from('staff_keys').select('user_id, full_name').eq('is_active', true),
         completedTasksQuery
       ]);
 

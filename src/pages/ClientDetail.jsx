@@ -118,7 +118,11 @@ const ClientDetail = () => {
     const fetchClientData = async () => {
     setLoading(true);
     try {
-      const { data: staffRows } = await supabase.from('user_roles').select('user_id, full_name, role');
+      // Read from staff_keys so ALL active staff (including Employees) appear in dropdowns
+      const { data: staffRows } = await supabase
+        .from('staff_keys')
+        .select('user_id, full_name, role')
+        .eq('is_active', true);
       setStaffList(staffRows || []);
 
       const { data: cData } = await supabase.from('clients').select('*').eq('id', id).maybeSingle();

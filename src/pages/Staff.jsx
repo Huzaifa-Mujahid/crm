@@ -57,7 +57,11 @@ const Staff = () => {
 
   const fetchStaff = async () => {
     try {
-      const { data } = await supabase.from('user_roles').select('*').order('created_at', { ascending: false });
+      const { data } = await supabase
+        .from('staff_keys')
+        .select('*')
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
       setStaff(data || []);
     } catch (err) { console.error(err); }
   };
@@ -165,7 +169,7 @@ const Staff = () => {
     s.role?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Helpers to resolve staff names from the user_roles table
+  // Helpers to resolve staff names from the staff_keys table
   const getStaffName = (userId) => {
     if (!userId) return '—';
     const found = staff.find(s => s.user_id === userId);

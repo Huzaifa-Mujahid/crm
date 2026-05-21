@@ -46,7 +46,11 @@ const ProjectModal = ({ formData, setFormData, clients, saving, formError, onSav
   }, [formData.services]);
 
   const fetchStaff = async () => {
-    const { data } = await supabase.from('user_roles').select('user_id, full_name, role');
+    // Read from staff_keys so ALL active staff (including Employees) appear in dropdowns
+    const { data } = await supabase
+      .from('staff_keys')
+      .select('user_id, full_name, role')
+      .eq('is_active', true);
     setStaffList(data || []);
   };
 
