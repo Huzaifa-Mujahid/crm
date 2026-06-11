@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Building2, Mail, Phone, Calendar, ArrowLeft, Users, 
   LayoutDashboard, Briefcase, CheckSquare, MessageSquare, 
-  DollarSign, History, ShieldCheck, Edit3, X, Loader2, CreditCard, Zap, Lock
+  DollarSign, History, ShieldCheck, Edit3, X, Loader2, CreditCard, Lock
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import ClientTimeline from '../components/ClientTimeline';
@@ -345,7 +345,7 @@ const ClientDetail = () => {
                   transition: 'all 0.2s ease',
                 }}
               >
-                <Zap size={11} /> Charge via Stripe
+                <CreditCard size={11} /> Charge via Stripe
               </button>
             </div>
           )}
@@ -550,7 +550,7 @@ const ClientDetail = () => {
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="modal-box" style={{ maxWidth: 420 }}>
               <div className="modal-header">
                 <span className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <Zap size={16} style={{ color: 'var(--accent-light)' }} /> Charge via Stripe
+                  <CreditCard size={16} style={{ color: 'var(--accent-light)' }} /> Charge via Stripe
                 </span>
                 <button onClick={() => setShowChargeModal(false)} className="btn btn-ghost btn-icon"><X size={18} /></button>
               </div>
@@ -631,7 +631,7 @@ const ClientDetail = () => {
                 <div className="modal-footer">
                   <button type="button" className="btn btn-secondary" onClick={() => setShowChargeModal(false)}>Cancel</button>
                   <button type="submit" className="btn btn-primary" disabled={charging}>
-                    {charging ? <><Loader2 size={14} className="animate-spin" /> Charging...</> : `⚡ Charge $${chargeAmount || '0.00'}`}
+                    {charging ? <><Loader2 size={14} className="animate-spin" /> Charging...</> : `Charge $${chargeAmount || '0.00'}`}
                   </button>
                 </div>
               </form>

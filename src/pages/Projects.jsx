@@ -347,7 +347,7 @@ const Projects = () => {
                       <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>{p.title}</p>
                       {p.services && (
                         <p style={{ fontSize: 11, color: 'var(--accent-light)', marginBottom: 6, fontStyle: 'italic' }}>
-                          ⚡ {p.services}
+                          {p.services}
                         </p>
                       )}
                       <p style={{ fontSize: 11.5, color: 'var(--text-muted)', marginBottom: 10 }}>{p.client_name}</p>
