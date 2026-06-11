@@ -1,76 +1,53 @@
-// Card Data Encryption Utility - AES-GCM 256-bit
-// Uses the Web Crypto API (built-in in all modern browsers).
-// Encryption key is stored in .env as VITE_CARD_ENCRYPTION_KEY.
+/**
+ * cardCrypto.js — Card Display Helpers
+ * ─────────────────────────────────────────────────────────────────
+ * STRIPE INTEGRATION KE BAAD:
+ *   - Card data ab Stripe mein store hota hai (PCI compliant) ✅
+ *   - Hamara DB sirf stripe_customer_id aur stripe_payment_method_id rakhta hai ✅
+ *   - Sirf card brand + last4 display ke liye DB mein aata hai (Stripe se) ✅
+ *
+ * Ye functions sirf display helpers hain — koi encryption nahi.
+ * ─────────────────────────────────────────────────────────────────
+ */
 
-const SECRET = import.meta.env.VITE_CARD_ENCRYPTION_KEY || 'AMS-CRM-Internal-2025-Key!@#';
-
-async function getKey(secret) {
-  const enc = new TextEncoder();
-  const keyMaterial = await crypto.subtle.importKey(
-    'raw',
-    enc.encode(secret),
-    'PBKDF2',
-    false,
-    ['deriveKey']
-  );
-  return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt: enc.encode('ams-crm-salt'), iterations: 100000, hash: 'SHA-256' },
-    keyMaterial,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt', 'decrypt']
-  );
+/** Card number ka masked display format return karta hai. */
+export function maskCard(last4) {
+  if (!last4) return '—';
+  return `**** **** **** ${String(last4).slice(-4)}`;
 }
 
-// Encrypt a plain text string (card number, CVV, etc.)
-// Returns a base64-encoded encrypted string safe for DB storage.
-export async function encryptCard(text) {
-  if (!text) return null;
-  try {
-    const key = await getKey(SECRET);
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const enc = new TextEncoder();
-    const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, enc.encode(String(text)));
-    const combined = new Uint8Array(iv.length + encrypted.byteLength);
-    combined.set(iv);
-    combined.set(new Uint8Array(encrypted), iv.length);
-    return btoa(String.fromCharCode(...combined));
-  } catch (e) {
-    console.error('Encryption failed:', e);
-    return null;
-  }
-}
-
-// Decrypt a previously encrypted card string.
-// Returns null if decryption fails (wrong key, corrupted data, etc.)
-export async function decryptCard(encryptedText) {
-  if (!encryptedText) return null;
-  try {
-    const key = await getKey(SECRET);
-    const combined = new Uint8Array(
-      atob(encryptedText).split('').map(c => c.charCodeAt(0))
-    );
-    const iv = combined.slice(0, 12);
-    const data = combined.slice(12);
-    const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data);
-    return new TextDecoder().decode(decrypted);
-  } catch {
-    return null;
-  }
-}
-
-// Returns masked display format.
-export function maskCard(cardNumber) {
-  if (!cardNumber) return '—';
-  const last4 = String(cardNumber).slice(-4);
-  return `**** **** **** ${last4}`;
-}
-
+/** CVV ko mask karta hai. */
 export function maskCvv() {
   return '***';
 }
 
-export function maskExpiry(expiry) {
-  if (!expiry) return '—';
-  return expiry.replace(/\d(?=\d{2}$)/, '*').replace(/\d/g, (c, i) => i < 2 ? c : '*');
+/** Expiry date ko display format mein return karta hai. */
+export function formatExpiry(month, year) {
+  if (!month || !year) return '—';
+  return `${String(month).padStart(2, '0')}/${String(year).slice(-2)}`;
+}
+
+/** Card brand ko readable format mein return karta hai. */
+export function formatCardBrand(brand) {
+  const brands = {
+    visa: 'Visa',
+    mastercard: 'MasterCard',
+    amex: 'American Express',
+    discover: 'Discover',
+    diners: 'Diners Club',
+    jcb: 'JCB',
+    unionpay: 'UnionPay',
+  };
+  return brands[brand?.toLowerCase()] ?? brand ?? 'Card';
+}
+
+/** Brand ke liye emoji/icon return karta hai. */
+export function cardBrandEmoji(brand) {
+  const icons = {
+    visa: '💳',
+    mastercard: '💳',
+    amex: '💳',
+    discover: '💳',
+  };
+  return icons[brand?.toLowerCase()] ?? '💳';
 }

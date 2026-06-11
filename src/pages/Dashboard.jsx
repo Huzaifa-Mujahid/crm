@@ -77,6 +77,9 @@ const Dashboard = () => {
   const [cityData, setCityData] = useState([]);
   const [remainingDuesData, setRemainingDuesData] = useState([]);
   const [monthlyClientsData, setMonthlyClientsData] = useState([]);
+  const [allDuePaymentsData, setAllDuePaymentsData] = useState({ total: 0, list: [] });
+  const [newClientsMonthData, setNewClientsMonthData] = useState({ count: 0, list: [] });
+  const [monthlyClientChartData, setMonthlyClientChartData] = useState([]);
   const [completedTasks, setCompletedTasks] = useState([]);
   const navigate = useNavigate();
 
@@ -90,16 +93,17 @@ const Dashboard = () => {
     if (!user) return;
     try {
       setLoading(true);
+      const monthsStr = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       const nowStr = new Date().toISOString();
 
       // Base queries
       let clientsQuery = (isAdmin || isManager) 
-        ? supabase.from('clients').select('id, full_name, city') 
+        ? supabase.from('clients').select('id, full_name, city, created_at, date') 
         : supabase.from('clients').select('*', { count: 'exact', head: true });
       let projectsQuery = (isAdmin || isManager) 
         ? supabase.from('projects').select('id, client_id, status, budget') 
         : supabase.from('projects').select('*', { count: 'exact', head: true });
-      let paymentsQuery = supabase.from('payments').select('amount, payment_date, is_paid, due_date, project_id, payment_type');
+      let paymentsQuery = supabase.from('payments').select('id, amount, payment_date, is_paid, due_date, project_id, payment_type');
       let overdueQuery = supabase.from('payments').select('*', { count: 'exact', head: true }).eq('is_paid', false).lt('due_date', nowStr);
       let tasksQuery = supabase.from('tasks').select('*, clients(full_name)').order('due_date', { ascending: true }).limit(5);
       let projStatusQuery = supabase.from('projects').select('status');
@@ -296,10 +300,62 @@ const Dashboard = () => {
           .slice(0, 5);
           
         setMonthlyClientsData(sortedMonthly);
+
+        // 5. All Due Payments
+        const dueList = [];
+        let totalDue = 0;
+        paymentsList.forEach(pay => {
+          if (!pay.is_paid) {
+            const cId = projToClient[pay.project_id];
+            if (cId) {
+              const cName = clientNameMap[cId] || 'Unknown Client';
+              const amt = parseFloat(pay.amount || 0);
+              totalDue += amt;
+              dueList.push({
+                id: pay.id,
+                name: cName,
+                amount: amt,
+                dueDate: pay.due_date
+              });
+            }
+          }
+        });
+        dueList.sort((a, b) => new Date(a.dueDate || 0) - new Date(b.dueDate || 0));
+        setAllDuePaymentsData({ total: totalDue, list: dueList });
+
+        // 6. Clients this month
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+        const monthClients = [];
+        
+        // Setup data for 6 month chart
+        const clientsChartMap = {};
+        for (let i = 5; i >= 0; i--) {
+          let m = currentMonth - i;
+          if (m < 0) m += 12;
+          clientsChartMap[monthsStr[m]] = 0;
+        }
+
+        clientsList.forEach(cl => {
+          const joinDateStr = cl.date || cl.created_at;
+          if (joinDateStr) {
+            const dt = new Date(joinDateStr);
+            if (dt.getMonth() === currentMonth && dt.getFullYear() === currentYear) {
+              monthClients.push(cl);
+            }
+            // Add to chart map if in last 6 months (approximate by month name)
+            const mName = monthsStr[dt.getMonth()];
+            if (clientsChartMap[mName] !== undefined) {
+              clientsChartMap[mName] += 1;
+            }
+          }
+        });
+        setNewClientsMonthData({ count: monthClients.length, list: monthClients });
+        setMonthlyClientChartData(Object.keys(clientsChartMap).map(k => ({ month: k, clients: clientsChartMap[k] })));
       }
 
       // Build revenue chart data
-      const monthsStr = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       const curMonth = new Date().getMonth();
       const chartMap = {};
       for (let i = 5; i >= 0; i--) {
@@ -591,6 +647,105 @@ const Dashboard = () => {
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Custom Cards requested by User */}
+      {(isAdmin || isManager) && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }} className="dash-grid">
+          {/* Due Payments Card */}
+          <div className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+              <div>
+                <p className="section-title">All Due Payments</p>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Pending payments across all clients</p>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total Due</p>
+                <p style={{ fontSize: 16, fontWeight: 800, color: 'var(--rose)' }}>
+                  ${allDuePaymentsData.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+            </div>
+            
+            {allDuePaymentsData.list.length === 0 ? (
+              <div className="empty-state" style={{ flex: 1, padding: '24px 0' }}>
+                <p className="empty-desc">No pending payments.</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto', maxHeight: 300 }}>
+                {allDuePaymentsData.list.map((due, idx) => (
+                  <div key={due.id || idx} style={{ 
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '12px 14px', borderRadius: 10,
+                    background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)'
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {due.name}
+                      </p>
+                      <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        Due: {due.dueDate ? new Date(due.dueDate).toLocaleDateString() : 'N/A'}
+                      </p>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <span style={{ 
+                        fontSize: 14, fontWeight: 800, color: 'var(--rose)',
+                        background: 'rgba(244,63,94,0.08)', padding: '4px 10px', borderRadius: 6,
+                        border: '1px solid rgba(244,63,94,0.15)', display: 'inline-block'
+                      }}>
+                        ${due.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Clients Joined Trend Card */}
+          <div className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+              <div>
+                <p className="section-title">Client Growth Trend</p>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Clients joined in the last 6 months</p>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>This Month</p>
+                <p style={{ fontSize: 16, fontWeight: 800, color: 'var(--emerald)' }}>
+                  {newClientsMonthData.count}
+                </p>
+              </div>
+            </div>
+
+            <div style={{ height: 240, flex: 1 }}>
+              {monthlyClientChartData.reduce((s, x) => s + x.clients, 0) === 0 ? (
+                <div className="empty-state" style={{ height: '100%', padding: 0 }}>
+                  <p className="empty-desc">No new clients in the last 6 months.</p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={monthlyClientChartData} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="clientGrad" x1="0" y1="1" x2="0" y2="0">
+                        <stop offset="0%" stopColor="rgba(16, 185, 129, 0.75)" />
+                        <stop offset="100%" stopColor="rgba(52, 211, 153, 0.95)" />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} allowDecimals={false} />
+                    <Tooltip 
+                      contentStyle={{ ...TTStyle, backdropFilter: 'blur(8px)', boxShadow: 'var(--shadow-card)' }} 
+                      cursor={{ fill: 'var(--bg-hover)', radius: 6 }} 
+                      formatter={v => [v, 'New Clients']} 
+                    />
+                    <Bar dataKey="clients" radius={[4, 4, 0, 0]} fill="url(#clientGrad)" barSize={32} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
           </div>
         </div>
       )}

@@ -2,14 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Building2, Mail, Phone, Calendar, ArrowLeft, MoreVertical, Users, 
+  Building2, Mail, Phone, Calendar, ArrowLeft, Users, 
   LayoutDashboard, Briefcase, CheckSquare, MessageSquare, 
-  DollarSign, History, ShieldCheck, Edit3, X, Loader2
+  DollarSign, History, ShieldCheck, Edit3, X, Loader2, CreditCard, Zap, Lock
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import ClientTimeline from '../components/ClientTimeline';
 import { useAuth } from '../hooks/useAuth';
-import { decryptCard } from '../lib/cardCrypto';
+import { maskCard, formatCardBrand, cardBrandEmoji, formatExpiry } from '../lib/cardCrypto';
 
 const STATUS_BADGE = { Active: 'badge-emerald', Onboarding: 'badge-blue', 'At Risk': 'badge-amber', Churned: 'badge-rose' };
 
@@ -26,60 +26,69 @@ const ClientDetail = () => {
   const [editForm, setEditForm] = useState({});
   const [data, setData] = useState({ projects: [], tasks: [], meetings: [], interactions: [], payments: [] });
 
-  const [revealedCard, setRevealedCard] = useState({ number: false });
-  const [decryptedCard, setDecryptedCard] = useState({ number: '' });
-  const [showReAuthModal, setShowReAuthModal] = useState(false);
-  const [authPassword, setAuthPassword] = useState('');
-  const [authError, setAuthError] = useState('');
-  const [verifying, setVerifying] = useState(false);
-  const [decryptedCvv, setDecryptedCvv] = useState('');
-  const [copied, setCopied] = useState(false);
+  // Stripe charge modal
+  const [showChargeModal, setShowChargeModal] = useState(false);
+  const [chargeAmount, setChargeAmount] = useState('');
+  const [chargeDesc, setChargeDesc] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [charging, setCharging] = useState(false);
+  const [chargeResult, setChargeResult] = useState(null); // { success, message }
 
-  const handleHideCard = (field) => {
-    setRevealedCard(prev => ({ ...prev, [field]: false }));
-    setDecryptedCvv('');
-    setCopied(false);
-  };
-
-  const handleCopyCvv = () => {
-    if (!decryptedCvv) return;
-    navigator.clipboard.writeText(decryptedCvv);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleVerifyAndReveal = async (e) => {
+  const handleChargeCard = async (e) => {
     e.preventDefault();
-    setVerifying(true);
-    setAuthError('');
+    if (!client?.stripe_customer_id || !client?.stripe_payment_method_id) {
+      setChargeResult({ success: false, message: 'No Stripe payment method on file.' });
+      return;
+    }
+    const amountDollars = parseFloat(chargeAmount);
+    if (!amountDollars || amountDollars < 0.50) {
+      setChargeResult({ success: false, message: 'Minimum charge amount is $0.50.' });
+      return;
+    }
+    if (!adminPassword) {
+      setChargeResult({ success: false, message: 'System password is required to charge.' });
+      return;
+    }
+    setCharging(true);
+    setChargeResult(null);
     try {
-      // Always verifies against the CURRENT live password stored in Supabase Auth.
-      // If the admin changed their password via Settings, the NEW password must be used here.
-      const { data: authData, error: authErr } = await supabase.auth.signInWithPassword({
+      // 1. Verify Admin Password
+      const { error: authError } = await supabase.auth.signInWithPassword({
         email: user.email,
-        password: authPassword
+        password: adminPassword,
       });
+      if (authError) throw new Error('Invalid system password.');
 
-      if (authErr || !authData?.session) {
-        throw new Error('Incorrect password. Use your current (latest) password.');
+      // 2. Proceed with charge
+      const { data: res, error } = await supabase.functions.invoke('charge-card', {
+        body: {
+          customer_id: client.stripe_customer_id,
+          payment_method_id: client.stripe_payment_method_id,
+          amount: Math.round(amountDollars * 100), // convert to cents
+          description: chargeDesc || `CRM Payment — ${client.full_name}`,
+        },
+      });
+      if (error) throw error;
+      if (!res?.success) throw new Error(res?.error || 'Charge failed.');
+      setChargeResult({ success: true, message: `✅ $${amountDollars.toFixed(2)} charged successfully! (${res.payment_intent_id})` });
+      // Log payment in our DB
+      if (data.projects.length > 0) {
+        await supabase.from('payments').insert({
+          project_id: data.projects[0].id,
+          amount: amountDollars,
+          payment_type: 'One-time',
+          due_date: new Date().toISOString().split('T')[0],
+          is_paid: true,
+          payment_date: new Date().toISOString(),
+        });
       }
-      
-      const numVal = await decryptCard(client.card_number_enc);
-      const cvvVal = client.card_cvv ? await decryptCard(client.card_cvv) : '';
-      
-      if (numVal) {
-        setDecryptedCard(prev => ({ ...prev, number: numVal }));
-        setDecryptedCvv(cvvVal);
-        setRevealedCard(prev => ({ ...prev, number: true }));
-        setShowReAuthModal(false);
-        setAuthPassword('');
-      } else {
-        throw new Error('Failed to decrypt card details.');
-      }
+      setChargeAmount('');
+      setChargeDesc('');
+      setAdminPassword('');
     } catch (err) {
-      setAuthError(err.message);
+      setChargeResult({ success: false, message: `❌ ${err.message}` });
     } finally {
-      setVerifying(false);
+      setCharging(false);
     }
   };
 
@@ -323,29 +332,20 @@ const ClientDetail = () => {
             </div>
           )}
 
-          {/* Masked Card Display — Admin only reveal */}
-          {isAdmin && client.card_number && (
-            <div style={{ textAlign: 'center', borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-              <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Card</p>
-              <p style={{ fontSize: 11, fontFamily: 'monospace', color: 'var(--text-secondary)', marginBottom: 4 }}>
-                {revealedCard.number ? decryptedCard.number : `**** **** **** ${client.card_number?.slice(-4)}`}
-              </p>
-              
-              {revealedCard.number && client.card_cvv && (
-                <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, marginBottom: 8 }}>
-                  <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>CVV</p>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 12, fontFamily: 'monospace', color: 'var(--text-secondary)' }}>***</span>
-                    <button onClick={handleCopyCvv} style={{ fontSize: 10, fontWeight: 700, padding: '3px 8px', borderRadius: 6, background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: copied ? 'var(--emerald)' : 'var(--text-secondary)', cursor: 'pointer', transition: 'all 0.2s ease', display: 'flex', alignItems: 'center', gap: 4 }}>
-                      {copied ? '✓ Copied' : '📋 Copy CVV'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <button onClick={() => revealedCard.number ? handleHideCard('number') : setShowReAuthModal(true)}
-                style={{ fontSize: 10, fontWeight: 700, color: revealedCard.number ? 'var(--rose)' : 'var(--accent-light)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}>
-                {revealedCard.number ? 'Hide' : '🔓 Reveal'}
+          {/* Charge via Stripe button — Admin only */}
+          {isAdmin && client.stripe_payment_method_id && (
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+              <button
+                onClick={() => { setShowChargeModal(true); setChargeResult(null); }}
+                style={{
+                  width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700,
+                  background: 'linear-gradient(135deg, rgba(99,102,241,0.15), rgba(59,130,246,0.15))',
+                  border: '1px solid rgba(99,102,241,0.3)', color: 'var(--accent-light)', cursor: 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                  transition: 'all 0.2s ease',
+                }}
+              >
+                <Zap size={11} /> Charge via Stripe
               </button>
             </div>
           )}
@@ -543,49 +543,95 @@ const ClientDetail = () => {
         )}
       </AnimatePresence>
 
+      {/* Stripe Charge Modal */}
       <AnimatePresence>
-        {showReAuthModal && (
-          <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowReAuthModal(false)}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="modal-box max-w-sm" style={{ padding: 24 }}>
-              <div style={{ textAlign: 'center', marginBottom: 16 }}>
-                <div style={{ width: 48, height: 48, borderRadius: '50%', background: 'rgba(99,102,241,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-light)', margin: '0 auto 12px auto' }}>
-                  <ShieldCheck size={24} />
-                </div>
-                <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 6px 0' }}>Security Verification</h3>
-                <p style={{ fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.4, margin: '0 0 10px 0' }}>
-                  Enter your <strong style={{ color: 'var(--text-secondary)' }}>current password</strong> to reveal decrypted card details.
-                </p>
-                <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 8, padding: '5px 10px' }}>
-                  <span style={{ fontSize: 10, color: 'var(--amber)', fontWeight: 700 }}>⚠ If you recently changed your password in Settings, use the NEW password.</span>
-                </div>
+        {showChargeModal && (
+          <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowChargeModal(false)}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="modal-box" style={{ maxWidth: 420 }}>
+              <div className="modal-header">
+                <span className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Zap size={16} style={{ color: 'var(--accent-light)' }} /> Charge via Stripe
+                </span>
+                <button onClick={() => setShowChargeModal(false)} className="btn btn-ghost btn-icon"><X size={18} /></button>
               </div>
+              <form onSubmit={handleChargeCard}>
+                <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  {/* Card info preview */}
+                  {client.stripe_payment_method_id && (
+                    <div style={{ padding: '10px 14px', background: 'rgba(99,102,241,0.05)', border: '1px solid rgba(99,102,241,0.15)', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <CreditCard size={16} style={{ color: 'var(--accent-light)', flexShrink: 0 }} />
+                      <div>
+                        <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>
+                          {client.stripe_card_brand 
+                            ? `${formatCardBrand(client.stripe_card_brand)} ${maskCard(client.stripe_card_last4)}`
+                            : 'Default Stripe Card'}
+                        </p>
+                        <p style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                          Charging: {client.full_name}
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
-              <form onSubmit={handleVerifyAndReveal}>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 16 }}>
                   <div>
-                    <input 
-                      type="password" 
-                      className="input" 
-                      placeholder="Confirm your password" 
-                      value={authPassword} 
-                      onChange={e => setAuthPassword(e.target.value)} 
-                      required 
-                      autoFocus
-                    />
+                    <label className="label">Amount ($) *</label>
+                    <div style={{ position: 'relative' }}>
+                      <DollarSign size={15} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                      <input
+                        className="input input-icon"
+                        type="number"
+                        step="0.01"
+                        min="0.50"
+                        value={chargeAmount}
+                        onChange={e => setChargeAmount(e.target.value)}
+                        placeholder="e.g. 500.00"
+                        required
+                        autoFocus
+                      />
+                    </div>
                   </div>
-                  {authError && (
-                    <p style={{ fontSize: 12, color: 'var(--rose)', fontWeight: 600, margin: 0, display: 'flex', alignItems: 'center', gap: 4 }}>
-                      ⚠️ {authError}
-                    </p>
+                  <div>
+                    <label className="label">Description (optional)</label>
+                    <div style={{ position: 'relative' }}>
+                      <CreditCard size={15} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                      <input
+                        className="input input-icon"
+                        value={chargeDesc}
+                        onChange={e => setChargeDesc(e.target.value)}
+                        placeholder="e.g. Monthly SEO payment"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="label">System Password *</label>
+                    <div style={{ position: 'relative' }}>
+                      <Lock size={15} style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+                      <input
+                        className="input input-icon"
+                        type="password"
+                        value={adminPassword}
+                        onChange={e => setAdminPassword(e.target.value)}
+                        placeholder="Enter your login password to confirm"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {chargeResult && (
+                    <div style={{
+                      padding: '10px 14px', borderRadius: 8, fontSize: 12.5, fontWeight: 600,
+                      background: chargeResult.success ? 'rgba(16,185,129,0.08)' : 'rgba(244,63,94,0.08)',
+                      border: `1px solid ${chargeResult.success ? 'rgba(16,185,129,0.2)' : 'rgba(244,63,94,0.2)'}`,
+                      color: chargeResult.success ? 'var(--emerald)' : 'var(--rose)',
+                    }}>
+                      {chargeResult.message}
+                    </div>
                   )}
                 </div>
-
-                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => { setShowReAuthModal(false); setAuthPassword(''); setAuthError(''); }}>
-                    Cancel
-                  </button>
-                  <button type="submit" className="btn btn-primary btn-sm" disabled={verifying}>
-                    {verifying ? <Loader2 size={13} className="animate-spin" /> : 'Confirm & Reveal'}
+                <div className="modal-footer">
+                  <button type="button" className="btn btn-secondary" onClick={() => setShowChargeModal(false)}>Cancel</button>
+                  <button type="submit" className="btn btn-primary" disabled={charging}>
+                    {charging ? <><Loader2 size={14} className="animate-spin" /> Charging...</> : `⚡ Charge $${chargeAmount || '0.00'}`}
                   </button>
                 </div>
               </form>

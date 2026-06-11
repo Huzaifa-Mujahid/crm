@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Search, Filter, Download, Loader2, ArrowUpRight, Building2, X, CreditCard, Briefcase, DollarSign, Calendar } from 'lucide-react';
+import { Plus, Search, Filter, Loader2, ArrowUpRight, Building2, X, CreditCard, Briefcase, DollarSign, ShieldCheck } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
-import { encryptCard } from '../lib/cardCrypto';
+import { formatCardBrand } from '../lib/cardCrypto';
 
 const STATUS_BADGE = {
   Active:     'badge-emerald',
@@ -30,14 +31,32 @@ const AVATAR_BG = ['var(--accent-glow)', 'var(--emerald-glow)', 'var(--amber-glo
 const AVATAR_FG = ['var(--accent-light)', 'var(--emerald)', 'var(--amber)', 'var(--blue)', 'var(--rose)'];
 const av = (name) => { const i = (name?.charCodeAt(0) || 0) % 5; return [AVATAR_BG[i], AVATAR_FG[i]]; };
 
+/* ── Stripe CardElement styles ──────────────────────────────── */
+const CARD_ELEMENT_OPTIONS = {
+  style: {
+    base: {
+      color: '#e2e8f0',
+      fontFamily: '"Inter", system-ui, sans-serif',
+      fontSize: '14px',
+      fontSmoothing: 'antialiased',
+      '::placeholder': { color: '#64748b' },
+      iconColor: '#6366f1',
+    },
+    invalid: { color: '#f43f5e', iconColor: '#f43f5e' },
+  },
+};
+
 /* ── Add Client Modal ─────────────────────────────────────────── */
 const AddClientModal = ({ onClose, onSaved }) => {
   const { user, isAdmin, isManager, role } = useAuth();
+  const stripe = useStripe();
+  const elements = useElements();
   const isCS = role === 'Customer Success Manager';
   const isCloser = role === 'Sales Closer';
   const isAgent = role === 'Sales Agent';
   const canHandlePayment = isAdmin || isManager || isCS || isCloser || isAgent;
   const [customService, setCustomService] = useState(false);
+  const [cardComplete, setCardComplete] = useState(false);
 
   const [form, setForm] = useState({ 
     // Client Info
@@ -62,11 +81,8 @@ const AddClientModal = ({ onClose, onSaved }) => {
     closer_name: '',
     other_information: '',
 
-    // Payment Info
+    // Payment Info (Stripe — no raw card data)
     payment_method: '',
-    card_number: '',
-    card_expiry: '',
-    card_cvv: '',
     billing_zip: '',
 
     // Project Info
@@ -92,14 +108,8 @@ const AddClientModal = ({ onClose, onSaved }) => {
   const [err, setErr] = useState(null);
   const up = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const handleExpiryChange = (val) => {
-    let clean = val.replace(/\D/g, '');
-    if (clean.length > 4) clean = clean.slice(0, 4);
-    if (clean.length > 2) {
-      up('card_expiry', `${clean.slice(0, 2)}/${clean.slice(2)}`);
-    } else {
-      up('card_expiry', clean);
-    }
+  const handleCardChange = (e) => {
+    setCardComplete(e.complete);
   };
 
   useEffect(() => {
@@ -124,7 +134,7 @@ const AddClientModal = ({ onClose, onSaved }) => {
     if (!form.full_name || !form.business_email) { setErr('Name and Business Email are required.'); return; }
     setSaving(true); setErr(null);
     try {
-      // 1. Insert Client
+      // ── Step 1: Insert Client (without card data first) ──────────
       const clientPayload = {
         full_name: form.full_name,
         email: form.business_email,
@@ -149,13 +159,6 @@ const AddClientModal = ({ onClose, onSaved }) => {
         other_information: form.other_information || null,
         
         payment_method: form.payment_method || null,
-        // Card data: encrypted before storing — AES-GCM 256-bit
-        // card_number stores ONLY last 4 digits in plain for display
-        // card_number_enc stores the full encrypted number
-        card_number: form.card_number ? `****-****-****-${form.card_number.slice(-4)}` : null,
-        card_number_enc: form.card_number ? await encryptCard(form.card_number) : null,
-        card_expiry: form.card_expiry ? await encryptCard(form.card_expiry) : null,
-        card_cvv: form.card_cvv ? await encryptCard(form.card_cvv) : null
       };
 
       const { data: clientData, error: clientErr } = await supabase
@@ -165,8 +168,58 @@ const AddClientModal = ({ onClose, onSaved }) => {
 
       if (clientErr) throw clientErr;
       const newClient = clientData?.[0];
+      if (!newClient) throw new Error('Failed to retrieve new client ID.');
 
-      if (!newClient) throw new Error("Failed to retrieve new client ID.");
+      // ── Step 2: Stripe Card Save (if card payment selected) ──────
+      if (isCardPayment && cardComplete && stripe && elements) {
+        try {
+          // 2a. Create Stripe Customer
+          const { data: custData, error: custErr } = await supabase.functions.invoke('create-stripe-customer', {
+            body: { name: form.full_name, email: form.business_email, client_id: newClient.id },
+          });
+          if (custErr) throw custErr;
+          const stripeCustomerId = custData?.customer_id;
+          if (!stripeCustomerId) throw new Error('Stripe customer creation failed.');
+
+          // 2b. Create SetupIntent
+          const { data: siData, error: siErr } = await supabase.functions.invoke('setup-card', {
+            body: { customer_id: stripeCustomerId },
+          });
+          if (siErr) throw siErr;
+          const clientSecret = siData?.client_secret;
+          if (!clientSecret) throw new Error('SetupIntent creation failed.');
+
+          // 2c. Confirm card with Stripe (card never touches our server)
+          const cardEl = elements.getElement(CardElement);
+          const { setupIntent, error: confirmErr } = await stripe.confirmCardSetup(clientSecret, {
+            payment_method: { card: cardEl, billing_details: { name: form.full_name, email: form.business_email } },
+          });
+          if (confirmErr) throw new Error(confirmErr.message);
+
+          const pmId = setupIntent.payment_method;
+
+          // 2d. Retrieve card details (brand + last4) from Stripe
+          // We use the setupIntent's payment_method to get display info
+          // Save customer_id + pm_id + display info to our DB
+          const { data: pmData } = await supabase.functions.invoke('setup-card', {
+            body: { customer_id: stripeCustomerId, retrieve_pm: pmId },
+          }).catch(() => ({ data: null }));
+
+          // Update client with Stripe info
+          await supabase.from('clients').update({
+            stripe_customer_id: stripeCustomerId,
+            stripe_payment_method_id: pmId,
+            // Display info will be populated when user visits ClientDetail
+          }).eq('id', newClient.id);
+
+        } catch (stripeErr) {
+          // Stripe error — client already saved, just warn
+          console.error('Stripe card setup error:', stripeErr);
+          setErr(`Client saved, but card setup failed: ${stripeErr.message}`);
+          setSaving(false);
+          return onSaved(); // Still close and refresh
+        }
+      }
 
       // 2. Insert Project (if requested)
       if (form.create_project && form.project_title) {
@@ -396,46 +449,34 @@ const AddClientModal = ({ onClose, onSaved }) => {
                 </div>
 
                 {isCardPayment && (
-                  <div style={{ padding: 14, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ padding: 14, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    {/* Stripe CardElement — card data never touches our server */}
                     <div>
-                      <label className="label">Card Number</label>
-                      <input 
-                        className="input" 
-                        type="text"
-                        placeholder="XXXX XXXX XXXX XXXX"
-                        value={form.card_number}
-                        onChange={e => up('card_number', e.target.value.replace(/\D/g, '').slice(0, 16))}
-                      />
+                      <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <ShieldCheck size={12} style={{ color: 'var(--emerald)' }} />
+                        Card Details (Secured by Stripe)
+                      </label>
+                      <div style={{
+                        padding: '12px 14px',
+                        background: 'var(--bg-base)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 10,
+                        transition: 'border-color 0.2s',
+                      }}>
+                        <CardElement options={CARD_ELEMENT_OPTIONS} onChange={handleCardChange} />
+                      </div>
+                      <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
+                        🔒 Card info goes directly to Stripe — never stored on our servers
+                      </p>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
-                      <div>
-                        <label className="label">Expiration (MM/YY)</label>
-                        <input 
-                          className="input" 
-                          placeholder="12/28"
-                          value={form.card_expiry}
-                          onChange={e => handleExpiryChange(e.target.value)}
-                        />
-                      </div>
-                      <div>
-                        <label className="label">CVV</label>
-                        <input 
-                          className="input" 
-                          type="password"
-                          placeholder="***"
-                          value={form.card_cvv}
-                          onChange={e => up('card_cvv', e.target.value.replace(/\D/g, '').slice(0, 4))}
-                        />
-                      </div>
-                      <div>
-                        <label className="label">Billing Zip Code</label>
-                        <input 
-                          className="input" 
-                          value={form.billing_zip} 
-                          onChange={e => up('billing_zip', e.target.value)} 
-                          placeholder="10001" 
-                        />
-                      </div>
+                    <div>
+                      <label className="label">Billing Zip Code</label>
+                      <input
+                        className="input"
+                        value={form.billing_zip}
+                        onChange={e => up('billing_zip', e.target.value)}
+                        placeholder="10001"
+                      />
                     </div>
                   </div>
                 )}
@@ -746,7 +787,7 @@ const Clients = () => {
                                 <CreditCard size={12} style={{ color: 'var(--accent-light)' }} /> {client.payment_method}
                               </p>
                               <p style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace', letterSpacing: '0.05em' }}>
-                                {isAdmin ? client.card_number : `**** **** **** ${client.card_number?.slice(-4)}`}
+                                {client.stripe_card_last4 ? `**** **** **** ${client.stripe_card_last4}` : '—'}
                               </p>
                             </div>
                           ) : <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>}
