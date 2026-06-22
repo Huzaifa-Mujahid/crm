@@ -155,8 +155,17 @@ const Staff = () => {
   const handleDeleteKey = async (id) => {
     if (!window.confirm('Are you sure you want to delete this staff access key?')) return;
     try {
+      // Get the user_id before deleting so we can clean up user_roles
+      const staffKeyObj = keys.find(k => k.id === id);
+      
       const { error } = await supabase.from('staff_keys').delete().eq('id', id);
       if (error) throw error;
+
+      // Clean up user_roles table so it doesn't get cluttered
+      if (staffKeyObj && staffKeyObj.user_id) {
+        await supabase.from('user_roles').delete().eq('user_id', staffKeyObj.user_id);
+      }
+
       fetchKeys();
     } catch (err) {
       setError(err.message);

@@ -677,7 +677,7 @@ const Clients = () => {
   useEffect(() => {
     fetchClients();
 
-    // Handle Quick Action
+    // Handle Quick actions
     const params = new URLSearchParams(location.search);
     if (params.get('new') === 'true' && canAddClient) {
       setShowModal(true);
