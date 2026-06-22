@@ -198,18 +198,20 @@ const AddClientModal = ({ onClose, onSaved }) => {
 
           const pmId = setupIntent.payment_method;
 
-          // 2d. Retrieve card details (brand + last4) from Stripe
-          // We use the setupIntent's payment_method to get display info
-          // Save customer_id + pm_id + display info to our DB
+          // 2d. Retrieve card display info (brand + last4 + expiry) from Stripe
+          // Card data Stripe pe hi rehta hai — sirf display info hamare DB mein jaati hai
           const { data: pmData } = await supabase.functions.invoke('setup-card', {
-            body: { customer_id: stripeCustomerId, retrieve_pm: pmId },
+            body: { retrieve_pm: pmId },
           }).catch(() => ({ data: null }));
 
-          // Update client with Stripe info
+          // Update client with full Stripe info including card display details
           await supabase.from('clients').update({
-            stripe_customer_id: stripeCustomerId,
+            stripe_customer_id:    stripeCustomerId,
             stripe_payment_method_id: pmId,
-            // Display info will be populated when user visits ClientDetail
+            stripe_card_brand:     pmData?.brand     ?? null,
+            stripe_card_last4:     pmData?.last4     ?? null,
+            stripe_card_exp_month: pmData?.exp_month ?? null,
+            stripe_card_exp_year:  pmData?.exp_year  ?? null,
           }).eq('id', newClient.id);
 
         } catch (stripeErr) {

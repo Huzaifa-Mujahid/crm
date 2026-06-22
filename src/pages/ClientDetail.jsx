@@ -31,6 +31,7 @@ const ClientDetail = () => {
   const [chargeAmount, setChargeAmount] = useState('');
   const [chargeDesc, setChargeDesc] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
+  const [selectedProjectId, setSelectedProjectId] = useState('');
   const [charging, setCharging] = useState(false);
   const [chargeResult, setChargeResult] = useState(null); // { success, message }
 
@@ -71,10 +72,11 @@ const ClientDetail = () => {
       if (error) throw error;
       if (!res?.success) throw new Error(res?.error || 'Charge failed.');
       setChargeResult({ success: true, message: `✅ $${amountDollars.toFixed(2)} charged successfully! (${res.payment_intent_id})` });
-      // Log payment in our DB
-      if (data.projects.length > 0) {
+      // Log payment in our DB against selected project (if chosen)
+      const logProjectId = selectedProjectId || (data.projects.length === 1 ? data.projects[0].id : null);
+      if (logProjectId) {
         await supabase.from('payments').insert({
-          project_id: data.projects[0].id,
+          project_id: logProjectId,
           amount: amountDollars,
           payment_type: 'One-time',
           due_date: new Date().toISOString().split('T')[0],
@@ -85,6 +87,7 @@ const ClientDetail = () => {
       setChargeAmount('');
       setChargeDesc('');
       setAdminPassword('');
+      setSelectedProjectId('');
     } catch (err) {
       setChargeResult({ success: false, message: `❌ ${err.message}` });
     } finally {
@@ -336,7 +339,7 @@ const ClientDetail = () => {
           {isAdmin && client.stripe_payment_method_id && (
             <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
               <button
-                onClick={() => { setShowChargeModal(true); setChargeResult(null); }}
+                onClick={() => { setShowChargeModal(true); setChargeResult(null); setSelectedProjectId(''); }}
                 style={{
                   width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700,
                   background: 'linear-gradient(135deg, rgba(99,102,241,0.15), rgba(59,130,246,0.15))',
@@ -565,6 +568,11 @@ const ClientDetail = () => {
                           {client.stripe_card_brand 
                             ? `${formatCardBrand(client.stripe_card_brand)} ${maskCard(client.stripe_card_last4)}`
                             : 'Default Stripe Card'}
+                          {client.stripe_card_exp_month && client.stripe_card_exp_year && (
+                            <span style={{ fontWeight: 500, color: 'var(--text-muted)', marginLeft: 8, fontSize: 11 }}>
+                              Exp {String(client.stripe_card_exp_month).padStart(2,'0')}/{client.stripe_card_exp_year}
+                            </span>
+                          )}
                         </p>
                         <p style={{ fontSize: 10, color: 'var(--text-muted)' }}>
                           Charging: {client.full_name}
@@ -572,6 +580,37 @@ const ClientDetail = () => {
                       </div>
                     </div>
                   )}
+
+                  {/* Project selector for payment logging */}
+                  <div>
+                    <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      Log Against Project
+                      <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500 }}>(optional)</span>
+                    </label>
+                    {data.projects.length === 0 ? (
+                      <div style={{ fontSize: 12, color: 'var(--amber)', padding: '8px 12px', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 8 }}>
+                        ⚠ No projects found — charge will process but won't be logged in payments.
+                      </div>
+                    ) : (
+                      <select
+                        className="input"
+                        value={selectedProjectId}
+                        onChange={e => setSelectedProjectId(e.target.value)}
+                      >
+                        {data.projects.length === 1
+                          ? <option value={data.projects[0].id}>{data.projects[0].title}</option>
+                          : (
+                            <>
+                              <option value="">Select project to log payment...</option>
+                              {data.projects.map(p => (
+                                <option key={p.id} value={p.id}>{p.title}</option>
+                              ))}
+                            </>
+                          )
+                        }
+                      </select>
+                    )}
+                  </div>
 
                   <div>
                     <label className="label">Amount ($) *</label>
