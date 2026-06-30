@@ -451,7 +451,11 @@ CREATE TABLE IF NOT EXISTS public.meetings (
 
 -- Enable RLS & Realtime
 ALTER TABLE public.meetings ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Authenticated users can manage meetings" ON public.meetings FOR ALL USING (auth.uid() IS NOT NULL);
+CREATE POLICY "meetings_admin_manager_all" ON public.meetings FOR ALL
+USING (public.is_admin() OR public.is_manager());
+CREATE POLICY "meetings_own_all" ON public.meetings FOR ALL
+USING (created_by = auth.uid())
+WITH CHECK (created_by = auth.uid());
 ALTER PUBLICATION supabase_realtime ADD TABLE public.meetings;
 
 
@@ -462,20 +466,25 @@ DROP POLICY IF EXISTS "Admins can delete projects" ON public.projects;
 DROP POLICY IF EXISTS "Admins can delete payments" ON public.payments;
 DROP POLICY IF EXISTS "Admins can delete interactions" ON public.interactions;
 
-CREATE POLICY "Allow delete for authenticated users" ON public.clients
-FOR DELETE TO authenticated USING (true);
+CREATE POLICY "clients_admin_manager_delete" ON public.clients
+FOR DELETE USING (public.is_admin() OR public.is_manager());
 
-CREATE POLICY "Allow delete for authenticated users" ON public.projects
-FOR DELETE TO authenticated USING (true);
+CREATE POLICY "projects_admin_manager_delete" ON public.projects
+FOR DELETE USING (public.is_admin() OR public.is_manager());
 
-CREATE POLICY "Allow delete for authenticated users" ON public.payments
-FOR DELETE TO authenticated USING (true);
+CREATE POLICY "payments_admin_manager_delete" ON public.payments
+FOR DELETE USING (public.is_admin() OR public.is_manager());
 
-CREATE POLICY "Allow delete for authenticated users" ON public.interactions
-FOR DELETE TO authenticated USING (true);
+CREATE POLICY "interactions_admin_manager_all" ON public.interactions FOR ALL
+USING (public.is_admin() OR public.is_manager());
+CREATE POLICY "interactions_own_all" ON public.interactions FOR ALL
+USING (created_by = auth.uid())
+WITH CHECK (created_by = auth.uid());
 
-CREATE POLICY "Allow delete for authenticated users" ON public.meetings
-FOR DELETE TO authenticated USING (true);
+CREATE POLICY "meetings_admin_manager_delete" ON public.meetings
+FOR DELETE USING (public.is_admin() OR public.is_manager());
+CREATE POLICY "meetings_own_delete" ON public.meetings
+FOR DELETE USING (created_by = auth.uid());
 
 CREATE TABLE IF NOT EXISTS public.tasks (
     id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -488,7 +497,9 @@ CREATE TABLE IF NOT EXISTS public.tasks (
 );
 
 ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow all for authenticated users" ON public.tasks FOR ALL TO authenticated USING (true);
+CREATE POLICY "tasks_all_secure" ON public.tasks FOR ALL
+USING (public.is_admin() OR public.is_manager() OR assigned_to = auth.uid())
+WITH CHECK (public.is_admin() OR public.is_manager() OR assigned_to = auth.uid());
 
 
 

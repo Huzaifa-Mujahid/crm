@@ -309,7 +309,7 @@ const Login = () => {
                       className="input input-icon"
                       value={username}
                       onChange={e => setUsername(e.target.value)}
-                      placeholder="Username (e.g. digital)"
+                      placeholder="Admin username"
                       required
                       disabled={adminLockout.isLockedOut}
                       autoComplete="username"

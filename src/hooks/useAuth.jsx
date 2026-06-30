@@ -113,8 +113,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   const adminLogin = async (username, password) => {
-    // Map username 'digital' to the admin email for Supabase Auth
-    const email = username === 'digital' ? 'digital@crm.com' : username;
+    const email = `${username}@crm.com`;
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
     return data;

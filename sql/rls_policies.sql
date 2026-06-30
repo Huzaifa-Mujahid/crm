@@ -110,6 +110,37 @@ CREATE POLICY "tasks_all_secure" ON public.tasks FOR ALL
 USING ( public.is_admin() OR public.is_manager() OR assigned_to = auth.uid() )
 WITH CHECK ( public.is_admin() OR public.is_manager() OR assigned_to = auth.uid() );
 
-CREATE POLICY "meetings_auth_all" ON public.meetings FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "interactions_auth_all" ON public.interactions FOR ALL USING (auth.role() = 'authenticated');
-CREATE POLICY "activity_log_auth_all" ON public.activity_log FOR ALL USING (auth.role() = 'authenticated');
+-- Drop old permissive policies first
+DROP POLICY IF EXISTS "meetings_auth_all" ON public.meetings;
+DROP POLICY IF EXISTS "interactions_auth_all" ON public.interactions;
+DROP POLICY IF EXISTS "activity_log_auth_all" ON public.activity_log;
+DROP POLICY IF EXISTS "Authenticated users can manage meetings" ON public.meetings;
+DROP POLICY IF EXISTS "Allow all for authenticated users" ON public.tasks;
+DROP POLICY IF EXISTS "Allow delete for authenticated users" ON public.clients;
+DROP POLICY IF EXISTS "Allow delete for authenticated users" ON public.projects;
+DROP POLICY IF EXISTS "Allow delete for authenticated users" ON public.payments;
+DROP POLICY IF EXISTS "Allow delete for authenticated users" ON public.interactions;
+DROP POLICY IF EXISTS "Allow delete for authenticated users" ON public.meetings;
+
+-- meetings: Admin/Manager full access, others only their own
+CREATE POLICY "meetings_admin_manager_all" ON public.meetings FOR ALL
+USING (public.is_admin() OR public.is_manager());
+
+CREATE POLICY "meetings_own_all" ON public.meetings FOR ALL
+USING (created_by = auth.uid())
+WITH CHECK (created_by = auth.uid());
+
+-- interactions: Admin/Manager full access, others only their own
+CREATE POLICY "interactions_admin_manager_all" ON public.interactions FOR ALL
+USING (public.is_admin() OR public.is_manager());
+
+CREATE POLICY "interactions_own_all" ON public.interactions FOR ALL
+USING (created_by = auth.uid())
+WITH CHECK (created_by = auth.uid());
+
+-- activity_log: Only Admin and Manager can read, only Admin can delete
+CREATE POLICY "activity_log_select" ON public.activity_log FOR SELECT
+USING (public.is_admin() OR public.is_manager());
+
+CREATE POLICY "activity_log_admin_all" ON public.activity_log FOR ALL
+USING (public.is_admin());

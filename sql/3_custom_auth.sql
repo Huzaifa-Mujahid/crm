@@ -26,7 +26,7 @@ ALTER TABLE public.user_roles ADD COLUMN IF NOT EXISTS login_key text;
 
 -- 3. HELPER FOR ADMIN
 -- Note: User 'digital' should be created in Supabase Auth with email 'digital@crm.com'
--- and password '246810235711'. This SQL ensures they have the Admin role.
+-- This SQL ensures they have the Admin role.
 -- INSERT INTO public.user_roles (user_id, role, full_name, email)
 -- SELECT id, 'Admin', 'Digital Admin', 'digital@crm.com' FROM auth.users WHERE email = 'digital@crm.com'
 -- ON CONFLICT (user_id) DO UPDATE SET role = 'Admin';

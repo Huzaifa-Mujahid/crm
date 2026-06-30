@@ -61,22 +61,23 @@ const ClientDetail = () => {
       if (authError) throw new Error('Invalid system password.');
 
       // 2. Proceed with charge
+      const chargeProjectId = selectedProjectId || (data.projects.length === 1 ? data.projects[0].id : null);
       const { data: res, error } = await supabase.functions.invoke('charge-card', {
         body: {
           customer_id: client.stripe_customer_id,
           payment_method_id: client.stripe_payment_method_id,
           amount: Math.round(amountDollars * 100), // convert to cents
           description: chargeDesc || `CRM Payment — ${client.full_name}`,
+          project_id: chargeProjectId || undefined,
         },
       });
       if (error) throw error;
       if (!res?.success) throw new Error(res?.error || 'Charge failed.');
       setChargeResult({ success: true, message: `✅ $${amountDollars.toFixed(2)} charged successfully! (${res.payment_intent_id})` });
       // Log payment in our DB against selected project (if chosen)
-      const logProjectId = selectedProjectId || (data.projects.length === 1 ? data.projects[0].id : null);
-      if (logProjectId) {
+      if (chargeProjectId) {
         await supabase.from('payments').insert({
-          project_id: logProjectId,
+          project_id: chargeProjectId,
           amount: amountDollars,
           payment_type: 'One-time',
           due_date: new Date().toISOString().split('T')[0],
