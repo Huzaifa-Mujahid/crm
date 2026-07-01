@@ -4,18 +4,11 @@ import {
   CheckSquare, Plus, Search, Filter, 
   Clock, AlertCircle, CheckCircle2, 
   Calendar, User, Tag, ChevronRight,
-  MoreVertical, X, Loader2, Edit3, Trash2
+  X, Loader2, Edit3, Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
-
-const PRIORITY_COLORS = {
-  Low: 'bg-[var(--border)] text-[var(--text-secondary)] border border-[var(--border)]',
-  Medium: 'bg-[var(--accent-glow)] text-[var(--accent-light)] border border-[var(--border-accent)]',
-  High: 'bg-[var(--amber-glow)] text-[var(--amber)] border border-[var(--amber-glow)]',
-  Urgent: 'bg-[var(--rose-glow)] text-[var(--rose)] border border-[var(--rose-glow)]',
-};
 
 const Tasks = () => {
   const { user, isAdmin, isManager } = useAuth();
@@ -46,20 +39,6 @@ const Tasks = () => {
 
   const navigate = useNavigate();
   const location = useLocation();
-
-  useEffect(() => {
-    fetchTasks();
-    fetchClients();
-    if (isAdmin || isManager) {
-      fetchStaff();
-    }
-
-    const params = new URLSearchParams(location.search);
-    if (params.get('new') === 'true') {
-      openAddTask();
-      navigate(location.pathname, { replace: true });
-    }
-  }, [user, location.search]);
 
   const fetchTasks = async () => {
     try {
@@ -100,6 +79,20 @@ const Tasks = () => {
     setNewTask({ id: null, title: '', client_id: '', assigned_to: (isAdmin || isManager) ? '' : user.id, priority: 'Medium', duration: '', due_date: '', description: '' });
     setIsModalOpen(true);
   };
+
+  useEffect(() => {
+    fetchTasks();
+    fetchClients();
+    if (isAdmin || isManager) {
+      fetchStaff();
+    }
+
+    const params = new URLSearchParams(location.search);
+    if (params.get('new') === 'true') {
+      openAddTask();
+      navigate(location.pathname, { replace: true });
+    }
+  }, [user, location.search]);
 
   const openEditTask = (task) => {
     setIsEdit(true);

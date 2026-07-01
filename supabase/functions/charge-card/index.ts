@@ -20,7 +20,7 @@
  *   - Amount validated against project budget (if project_id provided)
  *
  * Deploy: supabase functions deploy charge-card
- * Secrets: STRIPE_SECRET_KEY, SUPABASE_URL, SUPABASE_SECRET_KEY
+ * Secrets: STRIPE_SECRET_KEY, SUPABASE_URL (SUPABASE_SERVICE_ROLE_KEY auto-injected)
  *          — Supabase Dashboard > Settings > Secrets
  */
 
@@ -52,7 +52,7 @@ serve(async (req) => {
 
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SECRET_KEY') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
 
     const { data: { user: authUser }, error: authErr } = await supabase.auth.getUser(jwt);

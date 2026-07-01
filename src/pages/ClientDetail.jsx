@@ -71,7 +71,18 @@ const ClientDetail = () => {
           project_id: chargeProjectId || undefined,
         },
       });
-      if (error) throw error;
+      if (error) {
+        console.error('charge-card edge function error:', error);
+        let actualMsg = error.message;
+        try {
+          if (error.context && typeof error.context.text === 'function') {
+            const raw = await error.context.text();
+            try { const p = JSON.parse(raw); actualMsg = p.error || p.message || raw; }
+            catch { actualMsg = raw || actualMsg; }
+          }
+        } catch {}
+        throw new Error(actualMsg);
+      }
       if (!res?.success) throw new Error(res?.error || 'Charge failed.');
       setChargeResult({ success: true, message: `✅ $${amountDollars.toFixed(2)} charged successfully! (${res.payment_intent_id})` });
       // Log payment in our DB against selected project (if chosen)
