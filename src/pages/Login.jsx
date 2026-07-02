@@ -10,7 +10,7 @@ import { useAuth } from '../hooks/useAuth';
 const ROLES = ['Manager', 'Customer Success Manager', 'Sales Agent', 'Sales Closer', 'Employee'];
 
 // ─── Rate Limiting Constants ─────────────────────────────────────────────────
-const MAX_ATTEMPTS = 5;            // Max failed attempts before lockout
+const MAX_ATTEMPTS = 10;            // Max failed attempts before lockout
 const LOCKOUT_DURATION_MS = 5 * 60 * 1000; // 5 minutes lockout
 
 // ─── Lockout Hook ─────────────────────────────────────────────────────────────
@@ -153,7 +153,7 @@ const Login = () => {
       if (newCount >= MAX_ATTEMPTS) {
         setError('Too many failed attempts. Account locked for 5 minutes.');
       } else {
-        setError(err.message || 'Invalid admin credentials.');
+        setError('Invalid login details');
       }
     } finally {
       setLoading(false);
@@ -184,7 +184,7 @@ const Login = () => {
       if (newCount >= MAX_ATTEMPTS) {
         setError('Too many failed attempts. Account locked for 5 minutes.');
       } else {
-        setError(err.message || 'Invalid username, password or role.');
+        setError('Invalid login details');
       }
     } finally {
       setLoading(false);

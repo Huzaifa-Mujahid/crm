@@ -101,7 +101,7 @@ const ClientDetail = () => {
       setAdminPassword('');
       setSelectedProjectId('');
     } catch (err) {
-      setChargeResult({ success: false, message: `❌ ${err.message}` });
+      setChargeResult({ success: false, message: '❌ Charge failed' });
     } finally {
       setCharging(false);
     }
@@ -191,7 +191,7 @@ const ClientDetail = () => {
       setClient({ ...client, ...editForm });
       setShowEditModal(false);
     } catch (e) {
-      alert('Update failed: ' + e.message);
+      alert('Update failed');
     } finally {
       setSaving(false);
     }
@@ -223,7 +223,7 @@ const ClientDetail = () => {
       
       navigate('/clients');
     } catch (e) {
-      alert('Failed to delete client: ' + e.message);
+      alert('Delete failed');
       setLoading(false);
     }
   };
@@ -546,9 +546,9 @@ const ClientDetail = () => {
                     </div>
                   )}
                 </div>
-                <div className="modal-footer">
-                  <button type="button" className="btn btn-secondary" onClick={() => setShowEditModal(false)}>Cancel</button>
-                  <button type="submit" className="btn btn-primary" disabled={saving}>
+                <div className="modal-footer" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  <button type="button" className="btn btn-secondary" style={{ flex: '1 1 auto' }} onClick={() => setShowEditModal(false)}>Cancel</button>
+                  <button type="submit" className="btn btn-primary" style={{ flex: '1 1 auto' }} disabled={saving}>
                     {saving ? <Loader2 size={16} className="animate-spin" /> : 'Save Changes'}
                   </button>
                 </div>
@@ -679,9 +679,9 @@ const ClientDetail = () => {
                     </div>
                   )}
                 </div>
-                <div className="modal-footer">
-                  <button type="button" className="btn btn-secondary" onClick={() => setShowChargeModal(false)}>Cancel</button>
-                  <button type="submit" className="btn btn-primary" disabled={charging}>
+                <div className="modal-footer" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  <button type="button" className="btn btn-secondary" style={{ flex: '1 1 auto' }} onClick={() => setShowChargeModal(false)}>Cancel</button>
+                  <button type="submit" className="btn btn-primary" style={{ flex: '1 1 auto', whiteSpace: 'normal', height: 'auto', minHeight: '40px', padding: '8px' }} disabled={charging}>
                     {charging ? <><Loader2 size={14} className="animate-spin" /> Charging...</> : `Charge $${chargeAmount || '0.00'}`}
                   </button>
                 </div>
