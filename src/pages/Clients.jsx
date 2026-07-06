@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Search, Filter, Loader2, ArrowUpRight, Building2, X, CreditCard, Briefcase, DollarSign, ShieldCheck } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { CardNumberElement, CardExpiryElement, CardCvcElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { formatCardBrand } from '../lib/cardCrypto';
@@ -35,11 +35,11 @@ const av = (name) => { const i = (name?.charCodeAt(0) || 0) % 5; return [AVATAR_
 const CARD_ELEMENT_OPTIONS = {
   style: {
     base: {
-      color: '#e2e8f0',
+      color: '#1e293b',
       fontFamily: '"Inter", system-ui, sans-serif',
       fontSize: '14px',
       fontSmoothing: 'antialiased',
-      '::placeholder': { color: '#64748b' },
+      '::placeholder': { color: '#94a3b8' },
       iconColor: '#6366f1',
     },
     invalid: { color: '#f43f5e', iconColor: '#f43f5e' },
@@ -56,7 +56,10 @@ const AddClientModal = ({ onClose, onSaved }) => {
   const isAgent = role === 'Sales Agent';
   const canHandlePayment = isAdmin || isManager || isCS || isCloser || isAgent;
   const [customService, setCustomService] = useState(false);
-  const [cardComplete, setCardComplete] = useState(false);
+  const [cardNumberComplete, setCardNumberComplete] = useState(false);
+  const [cardExpiryComplete, setCardExpiryComplete] = useState(false);
+  const [cardCvcComplete, setCardCvcComplete] = useState(false);
+  const cardComplete = cardNumberComplete && cardExpiryComplete && cardCvcComplete;
 
   const [form, setForm] = useState({ 
     // Client Info
@@ -108,9 +111,9 @@ const AddClientModal = ({ onClose, onSaved }) => {
   const [err, setErr] = useState(null);
   const up = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  const handleCardChange = (e) => {
-    setCardComplete(e.complete);
-  };
+  const handleCardNumberChange = (e) => setCardNumberComplete(e.complete);
+  const handleCardExpiryChange = (e) => setCardExpiryComplete(e.complete);
+  const handleCardCvcChange = (e) => setCardCvcComplete(e.complete);
 
   useEffect(() => {
     fetchStaff();
@@ -190,9 +193,9 @@ const AddClientModal = ({ onClose, onSaved }) => {
           if (!clientSecret) throw new Error('SetupIntent creation failed.');
 
           // 2c. Confirm card with Stripe (card never touches our server)
-          const cardEl = elements.getElement(CardElement);
+          const cardEl = elements.getElement(CardNumberElement);
           const { setupIntent, error: confirmErr } = await stripe.confirmCardSetup(clientSecret, {
-            payment_method: { card: cardEl, billing_details: { name: form.full_name, email: form.business_email } },
+            payment_method: { card: cardEl, billing_details: { name: form.full_name, email: form.business_email, address: { postal_code: form.billing_zip } } },
           });
           if (confirmErr) throw new Error(confirmErr.message);
 
@@ -452,24 +455,29 @@ const AddClientModal = ({ onClose, onSaved }) => {
 
                 {isCardPayment && (
                   <div style={{ padding: 14, background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)', borderRadius: 10, display: 'flex', flexDirection: 'column', gap: 14 }}>
-                    {/* Stripe CardElement — card data never touches our server */}
-                    <div>
-                      <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <ShieldCheck size={12} style={{ color: 'var(--emerald)' }} />
-                        Card Details (Secured by Stripe)
-                      </label>
-                      <div style={{
-                        padding: '12px 14px',
-                        background: 'var(--bg-base)',
-                        border: '1px solid var(--border)',
-                        borderRadius: 10,
-                        transition: 'border-color 0.2s',
-                      }}>
-                        <CardElement options={CARD_ELEMENT_OPTIONS} onChange={handleCardChange} />
+                    <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <ShieldCheck size={12} style={{ color: 'var(--emerald)' }} />
+                      Card Details (Secured by Stripe)
+                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: 12 }}>
+                      <div>
+                        <label className="label" style={{ fontSize: 11 }}>Card Number</label>
+                        <div style={{ padding: '12px 14px', background: 'var(--bg-base)', border: '1px solid var(--border)', borderRadius: 10, transition: 'border-color 0.2s' }}>
+                          <CardNumberElement options={CARD_ELEMENT_OPTIONS} onChange={handleCardNumberChange} />
+                        </div>
                       </div>
-                      <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
-                        🔒 Card info goes directly to Stripe — never stored on our servers
-                      </p>
+                      <div>
+                        <label className="label" style={{ fontSize: 11 }}>Expiry Date</label>
+                        <div style={{ padding: '12px 14px', background: 'var(--bg-base)', border: '1px solid var(--border)', borderRadius: 10, transition: 'border-color 0.2s' }}>
+                          <CardExpiryElement options={CARD_ELEMENT_OPTIONS} onChange={handleCardExpiryChange} />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="label" style={{ fontSize: 11 }}>CVC</label>
+                        <div style={{ padding: '12px 14px', background: 'var(--bg-base)', border: '1px solid var(--border)', borderRadius: 10, transition: 'border-color 0.2s' }}>
+                          <CardCvcElement options={CARD_ELEMENT_OPTIONS} onChange={handleCardCvcChange} />
+                        </div>
+                      </div>
                     </div>
                     <div>
                       <label className="label">Billing Zip Code</label>

@@ -138,7 +138,6 @@ const Sidebar = ({ open, onClose }) => {
           flexDirection: 'column',
           height: '100%',
           flexShrink: 0,
-          position: 'relative',
           zIndex: 40,
           transform: open ? 'translateX(0)' : undefined,
           transition: 'transform 0.25s ease',
@@ -310,7 +309,7 @@ const MainLayout = ({ children }) => {
         </header>
 
         {/* Page content */}
-        <main style={{ flex: 1, overflowY: 'auto', padding: '28px 28px', background: 'var(--bg-base)' }}>
+        <main className="p-4 md:p-7" style={{ flex: 1, overflowY: 'auto', background: 'var(--bg-base)' }}>
           <div style={{ maxWidth: 1360, margin: '0 auto' }}>
             {children}
           </div>
