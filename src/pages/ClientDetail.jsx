@@ -84,7 +84,7 @@ const ClientDetail = () => {
         throw new Error(actualMsg);
       }
       if (!res?.success) throw new Error(res?.error || 'Charge failed.');
-      setChargeResult({ success: true, message: `✅ $${amountDollars.toFixed(2)} charged successfully! (${res.payment_intent_id})` });
+      setChargeResult({ success: true, message: `✅ $${amountDollars.toFixed(2)} charged successfully!` });
       // Log payment in our DB against selected project (if chosen)
       if (chargeProjectId) {
         await supabase.from('payments').insert({
@@ -570,7 +570,7 @@ const ClientDetail = () => {
                 <button onClick={() => setShowChargeModal(false)} className="btn btn-ghost btn-icon"><X size={18} /></button>
               </div>
               <form onSubmit={handleChargeCard}>
-                <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14, maxHeight: 'calc(90vh - 140px)', overflowY: 'auto', paddingRight: '8px' }}>
                   {/* Card info preview */}
                   {client.stripe_payment_method_id && (
                     <div style={{ padding: '10px 14px', background: 'rgba(99,102,241,0.05)', border: '1px solid rgba(99,102,241,0.15)', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 10 }}>

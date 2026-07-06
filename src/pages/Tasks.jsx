@@ -60,12 +60,13 @@ const Tasks = () => {
   };
 
   const fetchStaff = async () => {
-    // Read from staff_keys (always populated on create) so ALL staff — including
-    // Employees who haven't logged in yet — appear in the assignment dropdown.
+    // Read from staff_keys but ONLY include those who have logged in (user_id is not null)
+    // because assigned_to column requires a valid auth.users UUID.
     const { data } = await supabase
       .from('staff_keys')
       .select('user_id, full_name, role')
-      .eq('is_active', true);
+      .eq('is_active', true)
+      .not('user_id', 'is', null);
     setStaffList(data || []);
   };
 
