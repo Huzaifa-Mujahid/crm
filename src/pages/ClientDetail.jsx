@@ -53,6 +53,7 @@ const ClientDetail = () => {
   const [cardNumberComplete, setCardNumberComplete] = useState(false);
   const [cardExpiryComplete, setCardExpiryComplete] = useState(false);
   const [cardCvcComplete, setCardCvcComplete] = useState(false);
+  const [billingZip, setBillingZip] = useState('');
   const cardComplete = cardNumberComplete && cardExpiryComplete && cardCvcComplete;
   const [openCardMenuId, setOpenCardMenuId] = useState(null);
 
@@ -286,7 +287,7 @@ const ClientDetail = () => {
       // Confirm card with Stripe (raw card data never touches our server)
       const cardEl = elements.getElement(CardNumberElement);
       const { setupIntent, error: confirmErr } = await stripe.confirmCardSetup(siData.client_secret, {
-        payment_method: { card: cardEl, billing_details: { name: client.full_name, email: client.business_email || client.email } },
+        payment_method: { card: cardEl, billing_details: { name: client.full_name, email: client.business_email || client.email, address: { postal_code: billingZip } } },
       });
       if (confirmErr) throw new Error(confirmErr.message);
 
@@ -322,7 +323,7 @@ const ClientDetail = () => {
       }
 
       setShowAddCardModal(false);
-      setCardNumberComplete(false); setCardExpiryComplete(false); setCardCvcComplete(false);
+      setCardNumberComplete(false); setCardExpiryComplete(false); setCardCvcComplete(false); setBillingZip('');
       // Refresh data
       await fetchClientData();
     } catch (err) {
@@ -944,6 +945,15 @@ const ClientDetail = () => {
                           <CardCvcElement options={CARD_ELEMENT_OPTIONS} onChange={e => setCardCvcComplete(e.complete)} />
                         </div>
                       </div>
+                    </div>
+                    <div>
+                      <label className="label" style={{ fontSize: 11 }}>Billing Zip Code</label>
+                      <input
+                        className="input"
+                        value={billingZip}
+                        onChange={e => setBillingZip(e.target.value)}
+                        placeholder="10001"
+                      />
                     </div>
                   </div>
                 </div>
