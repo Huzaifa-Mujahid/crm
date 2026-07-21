@@ -27,7 +27,7 @@ const PaymentModal = ({ form, setForm, projects, clients, saving, err, onSave, o
                 <label className="label">Client *</label>
                 <select className="input" required={!isEdit} value={form.client_id || ''} onChange={e => setForm(f => ({ ...f, client_id: e.target.value, project_id: '' }))}>
                   <option value="">Select client…</option>
-                  {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+                  {clients.map(c => <option key={c.id} value={c.id}>{c.company || c.full_name}</option>)}
                 </select>
               </div>
               <div>
@@ -155,9 +155,9 @@ const Payments = () => {
       const [{ data: pData }, { data: prData }, { data: cData }] = await Promise.all([
         supabase.from('payments').select('*').order('created_at', { ascending: false }),
         supabase.from('projects').select('id, title, client_id, status'),
-        supabase.from('clients').select('id, full_name'),
+        supabase.from('clients').select('id, full_name, company'),
       ]);
-      const clientMap = (cData || []).reduce((a, c) => ({ ...a, [c.id]: c.full_name }), {});
+      const clientMap = (cData || []).reduce((a, c) => ({ ...a, [c.id]: c.company || c.full_name }), {});
       const projectMap = (prData || []).reduce((a, p) => ({ ...a, [p.id]: { title: p.title, client_id: p.client_id, status: p.status, client_name: clientMap[p.client_id] || 'Unknown' } }), {});
       
       let totalDue = 0, totalPaid = 0, overdue = 0;

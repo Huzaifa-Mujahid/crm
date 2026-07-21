@@ -70,6 +70,7 @@ const Dashboard = () => {
   const [stats, setStats] = useState({ clients: 0, projects: 0, revenue: 0, overdue: 0 });
   const [projData, setProjData] = useState([]);
   const [revChartData, setRevChartData] = useState([]);
+  const [rawRevData, setRawRevData] = useState([]);
   const [myTasks, setMyTasks] = useState([]);
   const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -81,6 +82,7 @@ const Dashboard = () => {
   const [newClientsMonthData, setNewClientsMonthData] = useState({ count: 0, list: [] });
   const [monthlyClientChartData, setMonthlyClientChartData] = useState([]);
   const [completedTasks, setCompletedTasks] = useState([]);
+  const [selectedMonth, setSelectedMonth] = useState('');
   const navigate = useNavigate();
 
   useEffect(() => { 
@@ -371,12 +373,34 @@ const Dashboard = () => {
         }
       });
       setRevChartData(Object.keys(chartMap).map(k => ({ month: k, revenue: chartMap[k] })));
+      setRawRevData(revData);
     } catch (err) { 
       console.error('FetchStats Error:', err); 
     } finally { 
       setLoading(false); 
     }
   };
+
+  const chartDataToDisplay = React.useMemo(() => {
+    if (!selectedMonth) return revChartData;
+    const intervals = { '1-5': 0, '6-10': 0, '11-15': 0, '16-20': 0, '21-25': 0, '26-31': 0 };
+    const monthsStr = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    rawRevData.forEach(r => {
+      if (r.is_paid && r.payment_date) {
+        const dt = new Date(r.payment_date);
+        if (monthsStr[dt.getMonth()] === selectedMonth) {
+          const d = dt.getDate();
+          if (d <= 5) intervals['1-5'] += (r.amount || 0);
+          else if (d <= 10) intervals['6-10'] += (r.amount || 0);
+          else if (d <= 15) intervals['11-15'] += (r.amount || 0);
+          else if (d <= 20) intervals['16-20'] += (r.amount || 0);
+          else if (d <= 25) intervals['21-25'] += (r.amount || 0);
+          else intervals['26-31'] += (r.amount || 0);
+        }
+      }
+    });
+    return Object.keys(intervals).map(k => ({ month: k, revenue: intervals[k] }));
+  }, [selectedMonth, revChartData, rawRevData]);
 
   return (
     <div className="animate-in" style={{ paddingBottom: 40 }}>
@@ -404,22 +428,32 @@ const Dashboard = () => {
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 22 }}>
               <div>
                 <p className="section-title">Revenue Overview</p>
-                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>Real collected revenue over last 6 months</p>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>
+                  {selectedMonth
+                    ? `Revenue for ${selectedMonth}: ${fmt(revChartData.find(d => d.month === selectedMonth)?.revenue || 0)}`
+                    : 'Real collected revenue over last 6 months'}
+                </p>
               </div>
-              <div style={{ display: 'flex', gap: 14 }}>
+              <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: 'var(--text-muted)' }}>
                   <span style={{ width: 8, height: 8, borderRadius: 2, background: '#6366f1', display: 'inline-block' }} />Revenue
                 </span>
+                <select className="input" style={{ padding: '2px 6px', fontSize: 11, minWidth: 110 }} value={selectedMonth} onChange={e => setSelectedMonth(e.target.value)}>
+                  <option value="">All (6 Months)</option>
+                  {revChartData.map(d => (
+                    <option key={d.month} value={d.month}>{d.month} — ${d.revenue.toLocaleString()}</option>
+                  ))}
+                </select>
               </div>
             </div>
             <div style={{ height: 240 }}>
-              {revChartData.reduce((s, x) => s + x.revenue, 0) === 0 ? (
+              {chartDataToDisplay.reduce((s, x) => s + x.revenue, 0) === 0 ? (
                 <div className="empty-state" style={{ height: '100%', padding: 0 }}>
-                   <p className="empty-desc">No revenue collected in the last 6 months.</p>
+                   <p className="empty-desc">No revenue collected in {selectedMonth || 'the last 6 months'}.</p>
                 </div>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={revChartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                  <AreaChart data={chartDataToDisplay} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
                     <defs>
                       <linearGradient id="rg" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor="#6366f1" stopOpacity={0.22} />
@@ -429,7 +463,7 @@ const Dashboard = () => {
                     <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
                     <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
                     <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} tickFormatter={v => `$${(v / 1000).toFixed(0)}k`} />
-                    <Tooltip contentStyle={TTStyle} formatter={(v) => [`$${v.toLocaleString()}`, 'Revenue']} />
+                    <Tooltip contentStyle={{ backgroundColor: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 10, fontSize: 12, color: 'var(--text-primary)' }} formatter={(v) => [`$${v.toLocaleString()}`, 'Revenue']} />
                     <Area type="monotone" dataKey="revenue" stroke="#6366f1" strokeWidth={2.5} fill="url(#rg)" />
                   </AreaChart>
                 </ResponsiveContainer>

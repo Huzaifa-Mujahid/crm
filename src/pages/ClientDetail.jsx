@@ -12,7 +12,7 @@ import { useAuth } from '../hooks/useAuth';
 import { maskCard, formatCardBrand, cardBrandEmoji, formatExpiry } from '../lib/cardCrypto';
 import { CardNumberElement, CardExpiryElement, CardCvcElement, useStripe, useElements } from '@stripe/react-stripe-js';
 
-const STATUS_BADGE = { Active: 'badge-emerald', Onboarding: 'badge-blue', 'At Risk': 'badge-amber', Churned: 'badge-rose' };
+const STATUS_BADGE = { Active: 'badge-emerald', Onboarding: 'badge-blue', 'At Risk': 'badge-amber', Deactive: 'badge-rose' };
 
 const CARD_ELEMENT_OPTIONS = {
   style: {
@@ -157,7 +157,7 @@ const ClientDetail = () => {
 
   const getHealthScore = () => {
     if (!client) return 80;
-    if (client.status === 'Churned') return 0;
+    if (client.status === 'Deactive') return 0;
     
     let score = 100;
     const today = new Date();
@@ -255,32 +255,6 @@ const ClientDetail = () => {
   const openEdit = () => {
     setEditForm({ ...client });
     setShowEditModal(true);
-  };
-
-  const handleDeleteClient = async () => {
-    if (!window.confirm('Are you sure you want to completely delete this client? All projects, payments, and interactions will be permanently lost.')) return;
-    try {
-      setLoading(true);
-      if (data.projects.length > 0) {
-        const { error: payErr } = await supabase.from('payments').delete().in('project_id', data.projects.map(p => p.id));
-        if (payErr) throw payErr;
-      }
-      await supabase.from('projects').delete().eq('client_id', id);
-      await supabase.from('meetings').delete().eq('client_id', id);
-      await supabase.from('interactions').delete().eq('client_id', id);
-      await supabase.from('tasks').delete().eq('client_id', id);
-      
-      const { data: delData, error } = await supabase.from('clients').delete().eq('id', id).select();
-      if (error) throw error;
-      if (!delData || delData.length === 0) {
-        throw new Error("Deletion blocked by Supabase Row Level Security (RLS). Please add a DELETE policy for the 'clients' table in your Supabase dashboard.");
-      }
-      
-      navigate('/clients');
-    } catch (e) {
-      alert('Delete failed');
-      setLoading(false);
-    }
   };
 
   // ── Card Management Functions ─────────────────────────────────
@@ -424,7 +398,7 @@ const ClientDetail = () => {
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button className="btn btn-secondary btn-sm" onClick={openEdit}><Edit3 size={14} /> Edit</button>
-          <button className="btn btn-danger btn-sm" onClick={handleDeleteClient}>Delete Client</button>
+
         </div>
       </div>
 
@@ -649,71 +623,68 @@ const ClientDetail = () => {
                     </button>
                   </div>
                 ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                     {data.paymentMethods.map(card => (
                       <div key={card.id} style={{
-                        padding: '20px 22px',
+                        padding: '20px 24px',
                         borderRadius: 14,
                         background: card.is_primary ? 'rgba(99,102,241,0.04)' : 'var(--bg-elevated)',
                         border: `1px solid ${card.is_primary ? 'rgba(99,102,241,0.3)' : 'var(--border)'}`,
-                        display: 'flex', flexDirection: 'column', gap: 20,
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                         position: 'relative'
                       }}>
-                        {/* Card top row */}
-                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                            <div style={{ width: 40, height: 28, borderRadius: 6, background: 'var(--bg-base)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                              <CreditCard size={16} style={{ color: card.is_primary ? 'var(--accent-light)' : 'var(--text-muted)' }} />
-                            </div>
-                            {card.is_primary && (
-                              <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent-light)', background: 'rgba(99,102,241,0.1)', padding: '3px 8px', borderRadius: 20, letterSpacing: '0.05em' }}>PRIMARY</span>
-                            )}
+                        {/* Card Left Side */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+                          <div style={{ width: 48, height: 32, borderRadius: 6, background: 'var(--bg-base)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <CreditCard size={20} style={{ color: card.is_primary ? 'var(--accent-light)' : 'var(--text-muted)' }} />
                           </div>
-
-                          {/* 3-dots menu */}
-                          <div style={{ position: 'relative' }}>
-                            <button
-                              onClick={() => setOpenCardMenuId(openCardMenuId === card.id ? null : card.id)}
-                              style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, borderRadius: 4 }}
-                              onMouseOver={e => e.currentTarget.style.background = 'var(--bg-base)'}
-                              onMouseOut={e => e.currentTarget.style.background = 'transparent'}
-                            >
-                              <MoreVertical size={16} />
-                            </button>
-                            {openCardMenuId === card.id && (
-                              <>
-                                <div style={{ position: 'fixed', inset: 0, zIndex: 10 }} onClick={() => setOpenCardMenuId(null)} />
-                                <div style={{ position: 'absolute', right: 0, top: 28, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 4, zIndex: 20, minWidth: 140, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
-                                  {!card.is_primary && (
-                                    <button onClick={() => { handleSetPrimary(card.id, card.stripe_payment_method_id); setOpenCardMenuId(null); }} style={{ width: '100%', textAlign: 'left', padding: '8px 12px', fontSize: 12, fontWeight: 500, color: 'var(--text-primary)', background: 'transparent', border: 'none', cursor: 'pointer', borderRadius: 4 }} onMouseOver={e => e.currentTarget.style.background='var(--bg-base)'} onMouseOut={e => e.currentTarget.style.background='transparent'}>
-                                      Set as Primary
-                                    </button>
-                                  )}
-                                  <button onClick={() => { handleRemoveCard(card.id, card.is_primary); setOpenCardMenuId(null); }} style={{ width: '100%', textAlign: 'left', padding: '8px 12px', fontSize: 12, fontWeight: 500, color: 'var(--rose)', background: 'transparent', border: 'none', cursor: 'pointer', borderRadius: 4 }} onMouseOver={e => e.currentTarget.style.background='rgba(244,63,94,0.1)'} onMouseOut={e => e.currentTarget.style.background='transparent'}>
-                                    Remove Card
-                                  </button>
-                                </div>
-                              </>
-                            )}
+                          
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 4 }}>
+                              <p style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '0.05em', fontFamily: 'monospace' }}>
+                                •••• •••• •••• {card.last4}
+                              </p>
+                              {card.is_primary && (
+                                <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent-light)', background: 'rgba(99,102,241,0.1)', padding: '3px 8px', borderRadius: 20, letterSpacing: '0.05em' }}>PRIMARY</span>
+                              )}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                              <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-muted)' }}>
+                                {card.brand ? formatCardBrand(card.brand) : 'Card'}
+                              </p>
+                              <span style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--border-mid)' }} />
+                              <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-muted)' }}>
+                                Valid Thru: <span style={{ color: 'var(--text-secondary)', fontFamily: 'monospace' }}>{String(card.exp_month || '').padStart(2,'0')}/{card.exp_year}</span>
+                              </p>
+                            </div>
                           </div>
                         </div>
 
-                        {/* Card number & details */}
-                        <div>
-                          <p style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '0.1em', fontFamily: 'monospace' }}>
-                            •••• •••• •••• {card.last4}
-                          </p>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 12 }}>
-                            <p style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)' }}>
-                              {card.brand ? formatCardBrand(card.brand) : 'Card'}
-                            </p>
-                            <div style={{ textAlign: 'right' }}>
-                               <p style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Valid Thru</p>
-                               <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
-                                 {String(card.exp_month || '').padStart(2,'0')}/{card.exp_year}
-                               </p>
-                            </div>
-                          </div>
+                        {/* 3-dots menu */}
+                        <div style={{ position: 'relative' }}>
+                          <button
+                            onClick={() => setOpenCardMenuId(openCardMenuId === card.id ? null : card.id)}
+                            style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 8, borderRadius: 6 }}
+                            onMouseOver={e => e.currentTarget.style.background = 'var(--bg-base)'}
+                            onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                          >
+                            <MoreVertical size={18} />
+                          </button>
+                          {openCardMenuId === card.id && (
+                            <>
+                              <div style={{ position: 'fixed', inset: 0, zIndex: 10 }} onClick={() => setOpenCardMenuId(null)} />
+                              <div style={{ position: 'absolute', right: 0, top: 32, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 4, zIndex: 20, minWidth: 140, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+                                {!card.is_primary && (
+                                  <button onClick={() => { handleSetPrimary(card.id, card.stripe_payment_method_id); setOpenCardMenuId(null); }} style={{ width: '100%', textAlign: 'left', padding: '8px 12px', fontSize: 12, fontWeight: 500, color: 'var(--text-primary)', background: 'transparent', border: 'none', cursor: 'pointer', borderRadius: 4 }} onMouseOver={e => e.currentTarget.style.background='var(--bg-base)'} onMouseOut={e => e.currentTarget.style.background='transparent'}>
+                                    Set as Primary
+                                  </button>
+                                )}
+                                <button onClick={() => { handleRemoveCard(card.id, card.is_primary); setOpenCardMenuId(null); }} style={{ width: '100%', textAlign: 'left', padding: '8px 12px', fontSize: 12, fontWeight: 500, color: 'var(--rose)', background: 'transparent', border: 'none', cursor: 'pointer', borderRadius: 4 }} onMouseOver={e => e.currentTarget.style.background='rgba(244,63,94,0.1)'} onMouseOut={e => e.currentTarget.style.background='transparent'}>
+                                  Remove Card
+                                </button>
+                              </div>
+                            </>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -757,7 +728,7 @@ const ClientDetail = () => {
                       <option value="Active">Active</option>
                       <option value="Onboarding">Onboarding</option>
                       <option value="At Risk">At Risk</option>
-                      <option value="Churned">Churned</option>
+                      <option value="Deactive">Deactive</option>
                     </select>
                   </div>
                   <div className="col-span-2" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 12 }}>
