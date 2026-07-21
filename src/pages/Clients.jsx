@@ -218,6 +218,17 @@ const AddClientModal = ({ onClose, onSaved }) => {
             stripe_card_exp_year:  pmData?.exp_year  ?? null,
           }).eq('id', newClient.id);
 
+          // Insert into the new multi-card table as the primary card
+          await supabase.from('client_payment_methods').insert({
+            client_id: newClient.id,
+            stripe_payment_method_id: pmId,
+            brand: pmData?.brand ?? null,
+            last4: pmData?.last4 ?? null,
+            exp_month: pmData?.exp_month ?? null,
+            exp_year: pmData?.exp_year ?? null,
+            is_primary: true
+          });
+
         } catch (stripeErr) {
           // Stripe error — client already saved, just warn
           console.error('Stripe card setup error:', stripeErr);

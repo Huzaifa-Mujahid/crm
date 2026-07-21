@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, DollarSign, Clock, Calendar, X, Loader2, TrendingUp, TrendingDown, ArrowUpRight, CheckCircle2 } from 'lucide-react';
+import { Clock, Calendar, X, Loader2, TrendingUp, TrendingDown, ArrowUpRight, Plus, DollarSign } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { useAuth } from '../hooks/useAuth';
 
-const EMPTY_FORM = { project_id: '', amount: '', due_date: '', is_paid: false, payment_total: '', payment_paid_now: '', payment_due_date: '', payment_type: 'One-time' };
+const EMPTY_FORM = { client_id: '', project_id: '', amount: '', due_date: '', is_paid: false, payment_total: '', payment_paid_now: '', payment_due_date: '', payment_type: 'One-time' };
 
-const PaymentModal = ({ form, setForm, projects, saving, err, onSave, onClose }) => {
+const PaymentModal = ({ form, setForm, projects, clients, saving, err, onSave, onCancelPayment, onClose, isAdmin }) => {
   const isEdit = !!form.id;
   const total = parseFloat(form.payment_total || 0) || 0;
   const paidNow = parseFloat(form.payment_paid_now || 0) || 0;
@@ -21,12 +22,21 @@ const PaymentModal = ({ form, setForm, projects, saving, err, onSave, onClose })
         <div className="modal-body" style={{ maxHeight: 'calc(90vh - 140px)', overflowY: 'auto', paddingRight: 8 }}>
           {err && <div className="alert alert-error"><span>⚠</span><span>{err}</span></div>}
           <form id="pay-form" onSubmit={onSave} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div>
-              <label className="label">Project *</label>
-              <select className="input" required value={form.project_id} onChange={e => setForm(f => ({ ...f, project_id: e.target.value }))}>
-                <option value="">Select project…</option>
-                {projects.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
-              </select>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label className="label">Client *</label>
+                <select className="input" required={!isEdit} value={form.client_id || ''} onChange={e => setForm(f => ({ ...f, client_id: e.target.value, project_id: '' }))}>
+                  <option value="">Select client…</option>
+                  {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="label">Project *</label>
+                <select className="input" required value={form.project_id} onChange={e => setForm(f => ({ ...f, project_id: e.target.value }))} disabled={!form.client_id && !isEdit}>
+                  <option value="">Select project…</option>
+                  {projects.filter(p => !form.client_id || p.client_id === form.client_id).map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+                </select>
+              </div>
             </div>
 
             {!isEdit ? (
@@ -99,11 +109,18 @@ const PaymentModal = ({ form, setForm, projects, saving, err, onSave, onClose })
             )}
           </form>
         </div>
-        <div className="modal-footer">
-          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" form="pay-form" type="submit" disabled={saving}>
-            {saving ? <><Loader2 size={14} style={{ animation: 'spin 0.7s linear infinite' }} /> Saving…</> : isEdit ? 'Update Payment' : 'Log Payment'}
-          </button>
+        <div className="modal-footer" style={{ justifyContent: isEdit ? 'space-between' : 'flex-end' }}>
+          {isEdit && isAdmin && !form.is_cancelled && (
+            <button type="button" className="btn btn-danger btn-sm" onClick={onCancelPayment} disabled={saving}>
+              Void / Cancel
+            </button>
+          )}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+            <button className="btn btn-primary" form="pay-form" type="submit" disabled={saving}>
+              {saving ? <><Loader2 size={14} style={{ animation: 'spin 0.7s linear infinite' }} /> Saving…</> : isEdit ? 'Update Payment' : 'Log Payment'}
+            </button>
+          </div>
         </div>
       </motion.div>
     </div>
@@ -111,8 +128,10 @@ const PaymentModal = ({ form, setForm, projects, saving, err, onSave, onClose })
 };
 
 const Payments = () => {
+  const { isAdmin } = useAuth();
   const [payments, setPayments] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -133,29 +152,43 @@ const Payments = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [{ data: pData }, { data: prData }] = await Promise.all([
+      const [{ data: pData }, { data: prData }, { data: cData }] = await Promise.all([
         supabase.from('payments').select('*').order('created_at', { ascending: false }),
-        supabase.from('projects').select('id, title'),
+        supabase.from('projects').select('id, title, client_id, status'),
+        supabase.from('clients').select('id, full_name'),
       ]);
-      const map = (prData || []).reduce((a, p) => ({ ...a, [p.id]: p.title }), {});
+      const clientMap = (cData || []).reduce((a, c) => ({ ...a, [c.id]: c.full_name }), {});
+      const projectMap = (prData || []).reduce((a, p) => ({ ...a, [p.id]: { title: p.title, client_id: p.client_id, status: p.status, client_name: clientMap[p.client_id] || 'Unknown' } }), {});
       
       let totalDue = 0, totalPaid = 0, overdue = 0;
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
       const enriched = (pData || []).map(p => {
-        const isOverdue = !p.is_paid && p.due_date && new Date(p.due_date) < today;
+        const isOverdue = !p.is_paid && !p.is_cancelled && p.due_date && new Date(p.due_date) < today;
         const amt = p.amount || 0;
-        if (p.is_paid) totalPaid += amt;
-        else {
-          totalDue += amt;
-          if (isOverdue) overdue += amt;
+        
+        if (!p.is_cancelled) {
+          if (p.is_paid) totalPaid += amt;
+          else {
+            totalDue += amt;
+            if (isOverdue) overdue += amt;
+          }
         }
-        return { ...p, project_title: map[p.project_id] || 'Unknown', is_overdue: isOverdue };
+        
+        return { 
+          ...p, 
+          project_title: projectMap[p.project_id]?.title || 'Unknown', 
+          client_id: projectMap[p.project_id]?.client_id || '',
+          client_name: projectMap[p.project_id]?.client_name || 'Unknown',
+          project_status: projectMap[p.project_id]?.status || 'Unknown',
+          is_overdue: isOverdue 
+        };
       });
 
       setPayments(enriched);
       setProjects(prData || []);
+      setClients(cData || []);
       setStats({ totalDue, totalPaid, overdue });
     } catch (e) { console.error(e); } finally { setLoading(false); }
   };
@@ -226,6 +259,24 @@ const Payments = () => {
       await supabase.from('payments').update({ is_paid: true, payment_date: new Date().toISOString() }).eq('id', p.id);
       fetchData();
     } catch (err) { console.error(err); }
+  };
+
+  const handleCancelPayment = async (e) => {
+    if (e) e.preventDefault();
+    if (!window.confirm('Are you sure you want to void/cancel this payment? This will remove it from total revenue.')) return;
+    
+    setSaving(true); setFormErr(null);
+    try {
+      const { error } = await supabase.from('payments').update({ is_cancelled: true }).eq('id', form.id);
+      if (error) throw error;
+      
+      setShowModal(false);
+      fetchData();
+    } catch (err) {
+      setFormErr(err.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const openAdd = () => { setForm(EMPTY_FORM); setFormErr(null); setShowModal(true); };
@@ -323,13 +374,16 @@ const Payments = () => {
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table className="data-table">
-              <thead><tr><th>Project / Ref</th><th>Amount</th><th>Due Date</th><th>Status</th><th style={{ textAlign: 'right' }}>Actions</th></tr></thead>
+              <thead><tr><th>Project / Ref</th><th>Client</th><th>Amount</th><th>Due Date</th><th>Status</th><th style={{ textAlign: 'right' }}>Actions</th></tr></thead>
               <tbody>
                 {filteredPayments.map(p => (
                   <tr key={p.id} style={{ background: p.is_overdue ? 'rgba(244,63,94,0.03)' : undefined }}>
                     <td>
                       <p style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 2 }}>{p.project_title}</p>
                       <p style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace' }}>INV-{p.id.slice(0, 8).toUpperCase()}</p>
+                    </td>
+                    <td>
+                      <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{p.client_name}</p>
                     </td>
                     <td style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>${(p.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                     <td>
@@ -341,21 +395,23 @@ const Payments = () => {
                       </div>
                     </td>
                     <td>
-                      <span className={`badge ${p.is_paid ? 'badge-emerald' : p.is_overdue ? 'badge-rose' : 'badge-amber'}`}>
-                        {p.is_paid ? '✓ Paid' : p.is_overdue ? 'Overdue' : 'Pending'}
-                      </span>
+                      {p.is_cancelled ? (
+                        <span className="badge badge-slate">Cancelled</span>
+                      ) : (
+                        <span className={`badge ${p.is_paid ? 'badge-emerald' : p.is_overdue ? 'badge-rose' : 'badge-amber'}`}>
+                          {p.is_paid ? '✓ Paid' : p.is_overdue ? 'Overdue' : 'Pending'}
+                        </span>
+                      )}
                     </td>
                     <td style={{ textAlign: 'right', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                       <button className="btn btn-ghost btn-icon" onClick={() => openEdit(p)}>
                         <ArrowUpRight size={15} />
                       </button>
-                      {!p.is_paid ? (
+                      {!p.is_paid && !p.is_cancelled ? (
                         <button className="btn btn-sm" style={{ background: 'var(--emerald-glow)', color: 'var(--emerald)', border: '1px solid rgba(16,185,129,0.2)' }} onClick={e => markAsPaid(p, e)}>
                           Mark Paid
                         </button>
-                      ) : (
-                        <CheckCircle2 size={18} style={{ color: 'var(--emerald)', opacity: 0.5, display: 'inline-block' }} />
-                      )}
+                      ) : null}
                     </td>
                   </tr>
                 ))}
@@ -366,7 +422,7 @@ const Payments = () => {
       </div>
 
       <AnimatePresence>
-        {showModal && <PaymentModal form={form} setForm={setForm} projects={projects} saving={saving} err={formErr} onSave={handleSave} onClose={() => setShowModal(false)} />}
+        {showModal && <PaymentModal form={form} setForm={setForm} projects={projects} clients={clients} saving={saving} err={formErr} onSave={handleSave} onCancelPayment={handleCancelPayment} onClose={() => setShowModal(false)} isAdmin={isAdmin} />}
       </AnimatePresence>
     </div>
   );

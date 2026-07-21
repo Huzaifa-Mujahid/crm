@@ -4,14 +4,22 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Building2, Mail, Phone, Calendar, ArrowLeft, Users, 
   LayoutDashboard, Briefcase, CheckSquare, MessageSquare, 
-  DollarSign, History, ShieldCheck, Edit3, X, Loader2, CreditCard, Lock
+  DollarSign, History, ShieldCheck, Edit3, X, Loader2, CreditCard, Lock, Plus, MoreVertical
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import ClientTimeline from '../components/ClientTimeline';
 import { useAuth } from '../hooks/useAuth';
 import { maskCard, formatCardBrand, cardBrandEmoji, formatExpiry } from '../lib/cardCrypto';
+import { CardNumberElement, CardExpiryElement, CardCvcElement, useStripe, useElements } from '@stripe/react-stripe-js';
 
 const STATUS_BADGE = { Active: 'badge-emerald', Onboarding: 'badge-blue', 'At Risk': 'badge-amber', Churned: 'badge-rose' };
+
+const CARD_ELEMENT_OPTIONS = {
+  style: {
+    base: { color: '#1e293b', fontFamily: '"Inter", system-ui, sans-serif', fontSize: '14px', '::placeholder': { color: '#94a3b8' }, iconColor: '#6366f1' },
+    invalid: { color: '#f43f5e', iconColor: '#f43f5e' },
+  },
+};
 
 const ClientDetail = () => {
   const { id } = useParams();
@@ -24,7 +32,9 @@ const ClientDetail = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [saving, setSaving] = useState(false);
   const [editForm, setEditForm] = useState({});
-  const [data, setData] = useState({ projects: [], tasks: [], meetings: [], interactions: [], payments: [] });
+  const [data, setData] = useState({ projects: [], tasks: [], meetings: [], interactions: [], payments: [], paymentMethods: [] });
+  const stripe = useStripe();
+  const elements = useElements();
 
   // Stripe charge modal
   const [showChargeModal, setShowChargeModal] = useState(false);
@@ -34,11 +44,29 @@ const ClientDetail = () => {
   const [selectedProjectId, setSelectedProjectId] = useState('');
   const [charging, setCharging] = useState(false);
   const [chargeResult, setChargeResult] = useState(null); // { success, message }
+  const [selectedCardId, setSelectedCardId] = useState('');
+
+  // Add Card modal
+  const [showAddCardModal, setShowAddCardModal] = useState(false);
+  const [addingCard, setAddingCard] = useState(false);
+  const [cardErr, setCardErr] = useState(null);
+  const [cardNumberComplete, setCardNumberComplete] = useState(false);
+  const [cardExpiryComplete, setCardExpiryComplete] = useState(false);
+  const [cardCvcComplete, setCardCvcComplete] = useState(false);
+  const cardComplete = cardNumberComplete && cardExpiryComplete && cardCvcComplete;
+  const [openCardMenuId, setOpenCardMenuId] = useState(null);
+
+  useEffect(() => {
+    if (showChargeModal && data.paymentMethods?.length > 0) {
+      const primary = data.paymentMethods.find(p => p.is_primary) || data.paymentMethods[0];
+      setSelectedCardId(primary.stripe_payment_method_id);
+    }
+  }, [showChargeModal, data.paymentMethods]);
 
   const handleChargeCard = async (e) => {
     e.preventDefault();
-    if (!client?.stripe_customer_id || !client?.stripe_payment_method_id) {
-      setChargeResult({ success: false, message: 'No Stripe payment method on file.' });
+    if (!selectedCardId) {
+      setChargeResult({ success: false, message: 'No Stripe payment method selected.' });
       return;
     }
     const amountDollars = parseFloat(chargeAmount);
@@ -65,7 +93,7 @@ const ClientDetail = () => {
       const { data: res, error } = await supabase.functions.invoke('charge-card', {
         body: {
           customer_id: client.stripe_customer_id,
-          payment_method_id: client.stripe_payment_method_id,
+          payment_method_id: selectedCardId,
           amount: Math.round(amountDollars * 100), // convert to cents
           description: chargeDesc || `CRM Payment — ${client.full_name}`,
           project_id: chargeProjectId || undefined,
@@ -87,14 +115,34 @@ const ClientDetail = () => {
       setChargeResult({ success: true, message: `✅ $${amountDollars.toFixed(2)} charged successfully!` });
       // Log payment in our DB against selected project (if chosen)
       if (chargeProjectId) {
-        await supabase.from('payments').insert({
-          project_id: chargeProjectId,
-          amount: amountDollars,
-          payment_type: 'One-time',
-          due_date: new Date().toISOString().split('T')[0],
-          is_paid: true,
-          payment_date: new Date().toISOString(),
-        });
+        // Check for existing pending/overdue payment for this project
+        const { data: existingPayments } = await supabase
+          .from('payments')
+          .select('*')
+          .eq('project_id', chargeProjectId)
+          .eq('is_paid', false)
+          .order('due_date', { ascending: true });
+          
+        if (existingPayments && existingPayments.length > 0) {
+          // Find an exact amount match first, otherwise fallback to the oldest pending payment
+          let paymentToUpdate = existingPayments.find(p => Math.abs(parseFloat(p.amount || 0) - amountDollars) < 0.01) || existingPayments[0];
+          
+          await supabase.from('payments').update({
+            is_paid: true,
+            payment_date: new Date().toISOString(),
+            amount: amountDollars // Ensure amount reflects actual charge
+          }).eq('id', paymentToUpdate.id);
+        } else {
+          // No pending payments found, insert a new one
+          await supabase.from('payments').insert({
+            project_id: chargeProjectId,
+            amount: amountDollars,
+            payment_type: 'One-time',
+            due_date: new Date().toISOString().split('T')[0],
+            is_paid: true,
+            payment_date: new Date().toISOString(),
+          });
+        }
       }
       setChargeAmount('');
       setChargeDesc('');
@@ -166,7 +214,14 @@ const ClientDetail = () => {
         payments = payData || [];
       }
 
-      setData({ projects: pRes.data || [], tasks: tRes.data || [], meetings: mRes.data || [], interactions: iRes.data || [], payments });
+      const { data: pmData } = await supabase
+        .from('client_payment_methods')
+        .select('*')
+        .eq('client_id', id)
+        .order('is_primary', { ascending: false })
+        .order('created_at', { ascending: true });
+
+      setData({ projects: pRes.data || [], tasks: tRes.data || [], meetings: mRes.data || [], interactions: iRes.data || [], payments, paymentMethods: pmData || [] });
     } catch (e) { console.error(e); } finally { setLoading(false); }
   };
 
@@ -228,6 +283,114 @@ const ClientDetail = () => {
     }
   };
 
+  // ── Card Management Functions ─────────────────────────────────
+  const handleAddCard = async (e) => {
+    e.preventDefault();
+    if (!stripe || !elements || !cardComplete) return;
+    setAddingCard(true); setCardErr(null);
+    try {
+      // Ensure client has a stripe customer id
+      let stripeCustomerId = client.stripe_customer_id;
+      if (!stripeCustomerId) {
+        const { data: custData, error: custErr } = await supabase.functions.invoke('create-stripe-customer', {
+          body: { name: client.full_name, email: client.business_email || client.email, client_id: id },
+        });
+        if (custErr) throw custErr;
+        stripeCustomerId = custData?.customer_id;
+        if (!stripeCustomerId) throw new Error('Stripe customer creation failed.');
+        await supabase.from('clients').update({ stripe_customer_id: stripeCustomerId }).eq('id', id);
+        setClient(prev => ({ ...prev, stripe_customer_id: stripeCustomerId }));
+      }
+
+      // Create SetupIntent
+      const { data: siData, error: siErr } = await supabase.functions.invoke('setup-card', {
+        body: { customer_id: stripeCustomerId },
+      });
+      if (siErr) throw siErr;
+      if (!siData?.client_secret) throw new Error('SetupIntent creation failed.');
+
+      // Confirm card with Stripe (raw card data never touches our server)
+      const cardEl = elements.getElement(CardNumberElement);
+      const { setupIntent, error: confirmErr } = await stripe.confirmCardSetup(siData.client_secret, {
+        payment_method: { card: cardEl, billing_details: { name: client.full_name, email: client.business_email || client.email } },
+      });
+      if (confirmErr) throw new Error(confirmErr.message);
+
+      const pmId = setupIntent.payment_method;
+
+      // Retrieve card display info from Stripe
+      const { data: pmInfo } = await supabase.functions.invoke('setup-card', {
+        body: { retrieve_pm: pmId },
+      }).catch(() => ({ data: null }));
+
+      const isFirstCard = data.paymentMethods.length === 0;
+
+      // Save to our DB — only store safe display info, never raw card data
+      await supabase.from('client_payment_methods').insert({
+        client_id: id,
+        stripe_payment_method_id: pmId,
+        brand: pmInfo?.brand ?? null,
+        last4: pmInfo?.last4 ?? null,
+        exp_month: pmInfo?.exp_month ?? null,
+        exp_year: pmInfo?.exp_year ?? null,
+        is_primary: isFirstCard,
+      });
+
+      // If this is the first card, also update the clients table for backwards compatibility
+      if (isFirstCard) {
+        await supabase.from('clients').update({
+          stripe_payment_method_id: pmId,
+          stripe_card_brand: pmInfo?.brand ?? null,
+          stripe_card_last4: pmInfo?.last4 ?? null,
+          stripe_card_exp_month: pmInfo?.exp_month ?? null,
+          stripe_card_exp_year: pmInfo?.exp_year ?? null,
+        }).eq('id', id);
+      }
+
+      setShowAddCardModal(false);
+      setCardNumberComplete(false); setCardExpiryComplete(false); setCardCvcComplete(false);
+      // Refresh data
+      await fetchClientData();
+    } catch (err) {
+      setCardErr(err.message);
+    } finally {
+      setAddingCard(false);
+    }
+  };
+
+  const handleSetPrimary = async (cardId, pmId) => {
+    try {
+      // Remove primary from all cards first
+      await supabase.from('client_payment_methods').update({ is_primary: false }).eq('client_id', id);
+      // Set selected card as primary
+      await supabase.from('client_payment_methods').update({ is_primary: true }).eq('id', cardId);
+      // Update clients table stripe_payment_method_id
+      const card = data.paymentMethods.find(c => c.id === cardId);
+      if (card) {
+        await supabase.from('clients').update({
+          stripe_payment_method_id: pmId,
+          stripe_card_brand: card.brand,
+          stripe_card_last4: card.last4,
+          stripe_card_exp_month: card.exp_month,
+          stripe_card_exp_year: card.exp_year,
+        }).eq('id', id);
+      }
+      await fetchClientData();
+    } catch (err) { alert('Failed to update primary card.'); }
+  };
+
+  const handleRemoveCard = async (cardId, isPrimary) => {
+    if (isPrimary && data.paymentMethods.length > 1) {
+      alert('Please set another card as Primary before removing this one.');
+      return;
+    }
+    if (!window.confirm('Remove this card from the client? This cannot be undone.')) return;
+    try {
+      await supabase.from('client_payment_methods').delete().eq('id', cardId);
+      await fetchClientData();
+    } catch (err) { alert('Failed to remove card.'); }
+  };
+
   if (loading) return (
     <div className="empty-state" style={{ minHeight: '60vh' }}>
       <div className="spinner" style={{ width: 40, height: 40, borderWidth: 3, marginBottom: 20 }} />
@@ -248,7 +411,8 @@ const ClientDetail = () => {
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'projects', label: 'Projects', icon: Briefcase },
     { id: 'interactions', label: 'Interactions', icon: MessageSquare },
-    { id: 'timeline', label: 'Timeline', icon: History }
+    { id: 'timeline', label: 'Timeline', icon: History },
+    ...(isAdmin ? [{ id: 'payment-methods', label: 'Payment Methods', icon: CreditCard }] : []),
   ];
 
   return (
@@ -259,7 +423,6 @@ const ClientDetail = () => {
           <ArrowLeft size={16} /> Back
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span className="badge badge-slate" style={{ fontFamily: 'monospace' }}>ID: {id.slice(0, 8)}</span>
           <button className="btn btn-secondary btn-sm" onClick={openEdit}><Edit3 size={14} /> Edit</button>
           <button className="btn btn-danger btn-sm" onClick={handleDeleteClient}>Delete Client</button>
         </div>
@@ -339,31 +502,6 @@ const ClientDetail = () => {
             );
           })()}
 
-          {/* Payment Method */}
-          {client.payment_method && (
-            <div style={{ textAlign: 'center', borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-              <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>Payment</p>
-              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent-light)' }}>{client.payment_method}</span>
-            </div>
-          )}
-
-          {/* Charge via Stripe button — Admin only */}
-          {isAdmin && client.stripe_payment_method_id && (
-            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-              <button
-                onClick={() => { setShowChargeModal(true); setChargeResult(null); setSelectedProjectId(''); }}
-                style={{
-                  width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 11, fontWeight: 700,
-                  background: 'linear-gradient(135deg, rgba(99,102,241,0.15), rgba(59,130,246,0.15))',
-                  border: '1px solid rgba(99,102,241,0.3)', color: 'var(--accent-light)', cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  transition: 'all 0.2s ease',
-                }}
-              >
-                <CreditCard size={11} /> Charge via Stripe
-              </button>
-            </div>
-          )}
         </div>
       </div>
 
@@ -476,6 +614,114 @@ const ClientDetail = () => {
               </div>
             )}
 
+            {activeTab === 'payment-methods' && isAdmin && (
+              <div className="card" style={{ padding: 28 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+                  <div>
+                    <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>Payment Methods</h3>
+                    <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Manage saved cards for {client.full_name}. Raw card data is never stored — secured by Stripe.</p>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => { setShowAddCardModal(true); setCardErr(null); }}
+                    >
+                      <Plus size={14} /> Add New Card
+                    </button>
+                    {data.paymentMethods.length > 0 && (
+                      <button
+                        className="btn btn-primary btn-sm"
+                        onClick={() => { setShowChargeModal(true); setChargeResult(null); setSelectedProjectId(''); }}
+                      >
+                        <CreditCard size={14} /> Charge via Stripe
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {data.paymentMethods.length === 0 ? (
+                  <div className="empty-state">
+                    <div className="empty-icon"><CreditCard size={22} /></div>
+                    <p className="empty-title">No payment methods</p>
+                    <p className="empty-desc">Add a card to start charging this client via Stripe.</p>
+                    <button className="btn btn-primary" style={{ marginTop: 16 }} onClick={() => { setShowAddCardModal(true); setCardErr(null); }}>
+                      <Plus size={14} /> Add First Card
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+                    {data.paymentMethods.map(card => (
+                      <div key={card.id} style={{
+                        padding: '20px 22px',
+                        borderRadius: 14,
+                        background: card.is_primary ? 'rgba(99,102,241,0.04)' : 'var(--bg-elevated)',
+                        border: `1px solid ${card.is_primary ? 'rgba(99,102,241,0.3)' : 'var(--border)'}`,
+                        display: 'flex', flexDirection: 'column', gap: 20,
+                        position: 'relative'
+                      }}>
+                        {/* Card top row */}
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                            <div style={{ width: 40, height: 28, borderRadius: 6, background: 'var(--bg-base)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <CreditCard size={16} style={{ color: card.is_primary ? 'var(--accent-light)' : 'var(--text-muted)' }} />
+                            </div>
+                            {card.is_primary && (
+                              <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent-light)', background: 'rgba(99,102,241,0.1)', padding: '3px 8px', borderRadius: 20, letterSpacing: '0.05em' }}>PRIMARY</span>
+                            )}
+                          </div>
+
+                          {/* 3-dots menu */}
+                          <div style={{ position: 'relative' }}>
+                            <button
+                              onClick={() => setOpenCardMenuId(openCardMenuId === card.id ? null : card.id)}
+                              style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 4, borderRadius: 4 }}
+                              onMouseOver={e => e.currentTarget.style.background = 'var(--bg-base)'}
+                              onMouseOut={e => e.currentTarget.style.background = 'transparent'}
+                            >
+                              <MoreVertical size={16} />
+                            </button>
+                            {openCardMenuId === card.id && (
+                              <>
+                                <div style={{ position: 'fixed', inset: 0, zIndex: 10 }} onClick={() => setOpenCardMenuId(null)} />
+                                <div style={{ position: 'absolute', right: 0, top: 28, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, padding: 4, zIndex: 20, minWidth: 140, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>
+                                  {!card.is_primary && (
+                                    <button onClick={() => { handleSetPrimary(card.id, card.stripe_payment_method_id); setOpenCardMenuId(null); }} style={{ width: '100%', textAlign: 'left', padding: '8px 12px', fontSize: 12, fontWeight: 500, color: 'var(--text-primary)', background: 'transparent', border: 'none', cursor: 'pointer', borderRadius: 4 }} onMouseOver={e => e.currentTarget.style.background='var(--bg-base)'} onMouseOut={e => e.currentTarget.style.background='transparent'}>
+                                      Set as Primary
+                                    </button>
+                                  )}
+                                  <button onClick={() => { handleRemoveCard(card.id, card.is_primary); setOpenCardMenuId(null); }} style={{ width: '100%', textAlign: 'left', padding: '8px 12px', fontSize: 12, fontWeight: 500, color: 'var(--rose)', background: 'transparent', border: 'none', cursor: 'pointer', borderRadius: 4 }} onMouseOver={e => e.currentTarget.style.background='rgba(244,63,94,0.1)'} onMouseOut={e => e.currentTarget.style.background='transparent'}>
+                                    Remove Card
+                                  </button>
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Card number & details */}
+                        <div>
+                          <p style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)', letterSpacing: '0.1em', fontFamily: 'monospace' }}>
+                            •••• •••• •••• {card.last4}
+                          </p>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 12 }}>
+                            <p style={{ fontSize: 12, fontWeight: 500, color: 'var(--text-muted)' }}>
+                              {card.brand ? formatCardBrand(card.brand) : 'Card'}
+                            </p>
+                            <div style={{ textAlign: 'right' }}>
+                               <p style={{ fontSize: 9, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 2 }}>Valid Thru</p>
+                               <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
+                                 {String(card.exp_month || '').padStart(2,'0')}/{card.exp_year}
+                               </p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
           </motion.div>
         </AnimatePresence>
       </div>
@@ -571,25 +817,24 @@ const ClientDetail = () => {
               </div>
               <form onSubmit={handleChargeCard}>
                 <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14, maxHeight: 'calc(90vh - 140px)', overflowY: 'auto', paddingRight: '8px' }}>
-                  {/* Card info preview */}
-                  {client.stripe_payment_method_id && (
-                    <div style={{ padding: '10px 14px', background: 'rgba(99,102,241,0.05)', border: '1px solid rgba(99,102,241,0.15)', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <CreditCard size={16} style={{ color: 'var(--accent-light)', flexShrink: 0 }} />
-                      <div>
-                        <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>
-                          {client.stripe_card_brand 
-                            ? `${formatCardBrand(client.stripe_card_brand)} ${maskCard(client.stripe_card_last4)}`
-                            : 'Default Stripe Card'}
-                          {client.stripe_card_exp_month && client.stripe_card_exp_year && (
-                            <span style={{ fontWeight: 500, color: 'var(--text-muted)', marginLeft: 8, fontSize: 11 }}>
-                              Exp {String(client.stripe_card_exp_month).padStart(2,'0')}/{client.stripe_card_exp_year}
-                            </span>
-                          )}
-                        </p>
-                        <p style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                          Charging: {client.full_name}
-                        </p>
-                      </div>
+                  {/* Card selector — show all saved cards */}
+                  {data.paymentMethods.length > 0 && (
+                    <div>
+                      <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <CreditCard size={12} style={{ color: 'var(--accent-light)' }} /> Select Card to Charge
+                      </label>
+                      <select
+                        className="input"
+                        value={selectedCardId}
+                        onChange={e => setSelectedCardId(e.target.value)}
+                        required
+                      >
+                        {data.paymentMethods.map(card => (
+                          <option key={card.id} value={card.stripe_payment_method_id}>
+                            {card.is_primary ? '★ ' : ''}{card.brand ? formatCardBrand(card.brand) : 'Card'} ••••{card.last4} — Exp {String(card.exp_month||'').padStart(2,'0')}/{card.exp_year}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   )}
 
@@ -597,7 +842,6 @@ const ClientDetail = () => {
                   <div>
                     <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                       Log Against Project
-                      <span style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500 }}>(optional)</span>
                     </label>
                     {data.projects.length === 0 ? (
                       <div style={{ fontSize: 12, color: 'var(--amber)', padding: '8px 12px', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 8 }}>
@@ -683,6 +927,59 @@ const ClientDetail = () => {
                   <button type="button" className="btn btn-secondary" style={{ flex: '1 1 auto' }} onClick={() => setShowChargeModal(false)}>Cancel</button>
                   <button type="submit" className="btn btn-primary" style={{ flex: '1 1 auto', whiteSpace: 'normal', height: 'auto', minHeight: '40px', padding: '8px' }} disabled={charging}>
                     {charging ? <><Loader2 size={14} className="animate-spin" /> Charging...</> : `Charge $${chargeAmount || '0.00'}`}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Add New Card Modal */}
+      <AnimatePresence>
+        {showAddCardModal && (
+          <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowAddCardModal(false)}>
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="modal-box" style={{ maxWidth: 420 }}>
+              <div className="modal-header">
+                <span className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <CreditCard size={16} style={{ color: 'var(--accent-light)' }} /> Add New Card
+                </span>
+                <button onClick={() => setShowAddCardModal(false)} className="btn btn-ghost btn-icon"><X size={18} /></button>
+              </div>
+              <form onSubmit={handleAddCard}>
+                <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                  {cardErr && <div className="alert alert-error"><span>⚠</span><span>{cardErr}</span></div>}
+                  <div style={{ padding: '12px 14px', background: 'rgba(16,185,129,0.05)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <ShieldCheck size={14} style={{ color: 'var(--emerald)', flexShrink: 0 }} />
+                    <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Card details are secured by Stripe. Raw card data never touches our servers.</p>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                    <div>
+                      <label className="label" style={{ fontSize: 11 }}>Card Number</label>
+                      <div style={{ padding: '12px 14px', background: 'var(--bg-base)', border: '1px solid var(--border)', borderRadius: 10 }}>
+                        <CardNumberElement options={CARD_ELEMENT_OPTIONS} onChange={e => setCardNumberComplete(e.complete)} />
+                      </div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div>
+                        <label className="label" style={{ fontSize: 11 }}>Expiry Date</label>
+                        <div style={{ padding: '12px 14px', background: 'var(--bg-base)', border: '1px solid var(--border)', borderRadius: 10 }}>
+                          <CardExpiryElement options={CARD_ELEMENT_OPTIONS} onChange={e => setCardExpiryComplete(e.complete)} />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="label" style={{ fontSize: 11 }}>CVC</label>
+                        <div style={{ padding: '12px 14px', background: 'var(--bg-base)', border: '1px solid var(--border)', borderRadius: 10 }}>
+                          <CardCvcElement options={CARD_ELEMENT_OPTIONS} onChange={e => setCardCvcComplete(e.complete)} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="modal-footer">
+                  <button type="button" className="btn btn-secondary" onClick={() => setShowAddCardModal(false)}>Cancel</button>
+                  <button type="submit" className="btn btn-primary" disabled={addingCard || !cardComplete}>
+                    {addingCard ? <><Loader2 size={14} style={{ animation: 'spin 0.7s linear infinite' }} /> Saving Card…</> : 'Save Card'}
                   </button>
                 </div>
               </form>
