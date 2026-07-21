@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Building2, Mail, Phone, Calendar, ArrowLeft, Users, 
   LayoutDashboard, Briefcase, CheckSquare, MessageSquare, 
-  DollarSign, History, ShieldCheck, Edit3, X, Loader2, CreditCard, Lock, Plus, MoreVertical
+  DollarSign, History, ShieldCheck, Edit3, X, Loader2, CreditCard, Lock, Plus, MoreVertical, Trash2
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import ClientTimeline from '../components/ClientTimeline';
@@ -31,6 +31,7 @@ const ClientDetail = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [showEditModal, setShowEditModal] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [data, setData] = useState({ projects: [], tasks: [], meetings: [], interactions: [], payments: [], paymentMethods: [] });
   const stripe = useStripe();
@@ -54,6 +55,7 @@ const ClientDetail = () => {
   const [cardExpiryComplete, setCardExpiryComplete] = useState(false);
   const [cardCvcComplete, setCardCvcComplete] = useState(false);
   const [billingZip, setBillingZip] = useState('');
+  const [cardholderName, setCardholderName] = useState('');
   const cardComplete = cardNumberComplete && cardExpiryComplete && cardCvcComplete;
   const [openCardMenuId, setOpenCardMenuId] = useState(null);
 
@@ -150,7 +152,7 @@ const ClientDetail = () => {
       setAdminPassword('');
       setSelectedProjectId('');
     } catch (err) {
-      setChargeResult({ success: false, message: '❌ Charge failed' });
+      setChargeResult({ success: false, message: `❌ ${err.message || 'Charge failed. Please try again.'}` });
     } finally {
       setCharging(false);
     }
@@ -258,6 +260,26 @@ const ClientDetail = () => {
     setShowEditModal(true);
   };
 
+  const handleDeleteClient = async () => {
+    if (!isAdmin && !isManager) {
+      alert("Only Admins or Managers can delete clients.");
+      return;
+    }
+    if (!window.confirm(`Are you sure you want to delete ${client.full_name}? This action cannot be undone and may fail if there is associated data (like projects or tasks) that cannot be automatically deleted.`)) return;
+    
+    setIsDeleting(true);
+    try {
+      const { error } = await supabase.from('clients').delete().eq('id', id);
+      if (error) throw error;
+      navigate('/clients', { replace: true });
+    } catch (err) {
+      console.error(err);
+      alert('Failed to delete client: ' + (err.message || 'Unknown error. Please check if there are associated records that need to be deleted first.'));
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // ── Card Management Functions ─────────────────────────────────
   const handleAddCard = async (e) => {
     e.preventDefault();
@@ -294,7 +316,7 @@ const ClientDetail = () => {
         payment_method: {
           card: cardEl,
           billing_details: {
-            name: client.full_name,
+            name: cardholderName.trim() || client.full_name,
             email: client.business_email || client.email,
             ...(billingZip && { address: { postal_code: billingZip } }),
           },
@@ -349,7 +371,7 @@ const ClientDetail = () => {
 
       // ── Step 7: Close modal and refresh ──────────────────────────
       setShowAddCardModal(false);
-      setCardNumberComplete(false); setCardExpiryComplete(false); setCardCvcComplete(false); setBillingZip('');
+      setCardNumberComplete(false); setCardExpiryComplete(false); setCardCvcComplete(false); setBillingZip(''); setCardholderName('');
       await fetchClientData();
     } catch (err) {
       setCardErr(err.message || 'An unknown error occurred. Please try again.');
@@ -424,6 +446,17 @@ const ClientDetail = () => {
           <ArrowLeft size={16} /> Back
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {(isAdmin || isManager) && (
+            <button 
+              className="btn btn-ghost btn-sm" 
+              onClick={handleDeleteClient} 
+              disabled={isDeleting}
+              style={{ color: 'var(--rose)', background: 'rgba(244,63,94,0.1)' }}
+            >
+              {isDeleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+              {isDeleting ? 'Deleting...' : 'Delete'}
+            </button>
+          )}
           <button className="btn btn-secondary btn-sm" onClick={openEdit}><Edit3 size={14} /> Edit</button>
 
         </div>
@@ -953,6 +986,17 @@ const ClientDetail = () => {
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                     <div>
+                      <label className="label" style={{ fontSize: 11 }}>Cardholder Name *</label>
+                      <input
+                        className="input"
+                        value={cardholderName}
+                        onChange={e => setCardholderName(e.target.value)}
+                        placeholder="Name as shown on card"
+                        required
+                        autoFocus
+                      />
+                    </div>
+                    <div>
                       <label className="label" style={{ fontSize: 11 }}>Card Number</label>
                       <div style={{ padding: '12px 14px', background: 'var(--bg-base)', border: '1px solid var(--border)', borderRadius: 10 }}>
                         <CardNumberElement options={CARD_ELEMENT_OPTIONS} onChange={e => setCardNumberComplete(e.complete)} />
@@ -972,20 +1016,33 @@ const ClientDetail = () => {
                         </div>
                       </div>
                     </div>
-                    <div>
-                      <label className="label" style={{ fontSize: 11 }}>Billing Zip Code</label>
-                      <input
-                        className="input"
-                        value={billingZip}
-                        onChange={e => setBillingZip(e.target.value)}
-                        placeholder="10001"
-                      />
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div>
+                        <label className="label" style={{ fontSize: 11 }}>Card Type</label>
+                        <select
+                          className="input"
+                          style={{ fontSize: 13 }}
+                          disabled
+                          tabIndex={-1}
+                        >
+                          <option>Auto-detected (Visa / Mastercard / Amex…)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="label" style={{ fontSize: 11 }}>Billing Zip Code</label>
+                        <input
+                          className="input"
+                          value={billingZip}
+                          onChange={e => setBillingZip(e.target.value)}
+                          placeholder="10001"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
                 <div className="modal-footer">
                   <button type="button" className="btn btn-secondary" onClick={() => setShowAddCardModal(false)}>Cancel</button>
-                  <button type="submit" className="btn btn-primary" disabled={addingCard || !cardComplete}>
+                  <button type="submit" className="btn btn-primary" disabled={addingCard || !cardComplete || !cardholderName.trim()}>
                     {addingCard ? <><Loader2 size={14} style={{ animation: 'spin 0.7s linear infinite' }} /> Saving Card…</> : 'Save Card'}
                   </button>
                 </div>

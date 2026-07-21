@@ -20,11 +20,8 @@ const stripeAppearance = {
   },
 };
 
-if (import.meta.env.PROD) {
-  console.error = () => {};
-  console.log = () => {};
-  console.warn = () => {};
-}
+
+
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
