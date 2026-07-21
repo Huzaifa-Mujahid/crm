@@ -73,7 +73,7 @@ serve(async (req) => {
     const setupIntent = await stripe.setupIntents.create({
       customer: customer_id,
       payment_method_types: ['card'],
-      usage: 'off_session', // Future charges ke liye
+      usage: 'on_session', // User is present when card is being saved — higher bank acceptance rate
     });
 
     return new Response(JSON.stringify({ client_secret: setupIntent.client_secret }), {

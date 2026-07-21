@@ -264,44 +264,64 @@ const ClientDetail = () => {
     if (!stripe || !elements || !cardComplete) return;
     setAddingCard(true); setCardErr(null);
     try {
-      // Ensure client has a stripe customer id
+      // ── Step 1: Ensure client has a Stripe Customer ID ───────────
       let stripeCustomerId = client.stripe_customer_id;
       if (!stripeCustomerId) {
         const { data: custData, error: custErr } = await supabase.functions.invoke('create-stripe-customer', {
           body: { name: client.full_name, email: client.business_email || client.email, client_id: id },
         });
-        if (custErr) throw custErr;
+        if (custErr) throw new Error(`Failed to create Stripe customer: ${custErr.message}`);
         stripeCustomerId = custData?.customer_id;
-        if (!stripeCustomerId) throw new Error('Stripe customer creation failed.');
-        await supabase.from('clients').update({ stripe_customer_id: stripeCustomerId }).eq('id', id);
+        if (!stripeCustomerId) throw new Error('Stripe customer creation returned no ID. Check edge function logs.');
+
+        const { error: updateErr } = await supabase.from('clients').update({ stripe_customer_id: stripeCustomerId }).eq('id', id);
+        if (updateErr) throw new Error(`Failed to save Stripe customer ID: ${updateErr.message}`);
         setClient(prev => ({ ...prev, stripe_customer_id: stripeCustomerId }));
       }
 
-      // Create SetupIntent
+      // ── Step 2: Create SetupIntent ────────────────────────────────
       const { data: siData, error: siErr } = await supabase.functions.invoke('setup-card', {
         body: { customer_id: stripeCustomerId },
       });
-      if (siErr) throw siErr;
-      if (!siData?.client_secret) throw new Error('SetupIntent creation failed.');
+      if (siErr) throw new Error(`Failed to create SetupIntent: ${siErr.message}`);
+      if (!siData?.client_secret) throw new Error('SetupIntent returned no client_secret. Check edge function logs.');
 
-      // Confirm card with Stripe (raw card data never touches our server)
+      // ── Step 3: Confirm card with Stripe ─────────────────────────
       const cardEl = elements.getElement(CardNumberElement);
+      if (!cardEl) throw new Error('Card element not found. Please refresh and try again.');
+
       const { setupIntent, error: confirmErr } = await stripe.confirmCardSetup(siData.client_secret, {
-        payment_method: { card: cardEl, billing_details: { name: client.full_name, email: client.business_email || client.email, address: { postal_code: billingZip } } },
+        payment_method: {
+          card: cardEl,
+          billing_details: {
+            name: client.full_name,
+            email: client.business_email || client.email,
+            ...(billingZip && { address: { postal_code: billingZip } }),
+          },
+        },
       });
       if (confirmErr) throw new Error(confirmErr.message);
+      if (!setupIntent?.payment_method) throw new Error('Stripe returned no payment method ID after setup.');
 
       const pmId = setupIntent.payment_method;
 
-      // Retrieve card display info from Stripe
-      const { data: pmInfo } = await supabase.functions.invoke('setup-card', {
-        body: { retrieve_pm: pmId },
-      }).catch(() => ({ data: null }));
+      // ── Step 4: Retrieve card display info from Stripe ───────────
+      let pmInfo = null;
+      try {
+        const { data: pmData, error: pmErr } = await supabase.functions.invoke('setup-card', {
+          body: { retrieve_pm: pmId },
+        });
+        if (!pmErr && pmData?.last4) {
+          pmInfo = pmData;
+        }
+      } catch (_) {
+        // Not critical — card still saved, just without display info
+      }
 
+      // ── Step 5: Save to database ──────────────────────────────────
       const isFirstCard = data.paymentMethods.length === 0;
 
-      // Save to our DB — only store safe display info, never raw card data
-      await supabase.from('client_payment_methods').insert({
+      const { error: insertErr } = await supabase.from('client_payment_methods').insert({
         client_id: id,
         stripe_payment_method_id: pmId,
         brand: pmInfo?.brand ?? null,
@@ -311,7 +331,12 @@ const ClientDetail = () => {
         is_primary: isFirstCard,
       });
 
-      // If this is the first card, also update the clients table for backwards compatibility
+      if (insertErr) {
+        // Card is saved on Stripe but failed to save in our DB
+        throw new Error(`Card was authorized by Stripe (ID: ${pmId}) but failed to save in database: ${insertErr.message}. Please contact support with this Stripe PM ID.`);
+      }
+
+      // ── Step 6: Update clients table for backwards compatibility ──
       if (isFirstCard) {
         await supabase.from('clients').update({
           stripe_payment_method_id: pmId,
@@ -322,16 +347,17 @@ const ClientDetail = () => {
         }).eq('id', id);
       }
 
+      // ── Step 7: Close modal and refresh ──────────────────────────
       setShowAddCardModal(false);
       setCardNumberComplete(false); setCardExpiryComplete(false); setCardCvcComplete(false); setBillingZip('');
-      // Refresh data
       await fetchClientData();
     } catch (err) {
-      setCardErr(err.message);
+      setCardErr(err.message || 'An unknown error occurred. Please try again.');
     } finally {
       setAddingCard(false);
     }
   };
+
 
   const handleSetPrimary = async (cardId, pmId) => {
     try {
