@@ -11,7 +11,7 @@ const STATUS_BADGE = {
   Active:     'badge-emerald',
   Onboarding: 'badge-blue',
   'At Risk':  'badge-amber',
-  Deactive:    'badge-rose',
+  Inactive:    'badge-rose',
 };
 
 const SERVICE_OPTIONS = [
@@ -418,7 +418,7 @@ const AddClientModal = ({ onClose, onSaved }) => {
                 <div style={{ gridColumn: 'span 2' }}>
                   <label className="label">Status</label>
                   <select className="input" value={form.status} onChange={e => up('status', e.target.value)}>
-                    {['Active', 'Onboarding', 'At Risk', 'Deactive'].map(s => <option key={s}>{s}</option>)}
+                    {['Active', 'Onboarding', 'At Risk', 'Inactive'].map(s => <option key={s}>{s}</option>)}
                   </select>
                 </div>
               </div>
@@ -746,7 +746,7 @@ const Clients = () => {
         <div style={{ position: 'relative', flexShrink: 0 }}>
           <select className="input" style={{ paddingRight: 34, minWidth: 160 }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
             <option value="">All Statuses</option>
-            {['Active', 'Onboarding', 'At Risk', 'Deactive'].map(s => <option key={s}>{s}</option>)}
+            {['Active', 'Onboarding', 'At Risk', 'Inactive'].map(s => <option key={s}>{s}</option>)}
           </select>
           <Filter size={13} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
         </div>

@@ -27,7 +27,7 @@ const SERVICE_OPTIONS = [
   'GOOGLE ADS',
 ];
 
-const EMPTY_FORM = { id: null, client_id: '', title: '', services: '', description: '', budget: '', status: 'Pending', start_date: '', end_date: '' };
+const EMPTY_FORM = { id: null, client_id: '', title: '', services: '', description: '', budget: '', status: 'Pending', start_date: '', end_date: '', billing_type: 'One-time', billing_cycle: '' };
 
 /* ── Project Modal ─────────────────────────────────────────────── */
 const ProjectModal = ({ formData, setFormData, clients, saving, formError, onSave, onDelete, onClose, isEdit }) => {
@@ -153,13 +153,35 @@ const ProjectModal = ({ formData, setFormData, clients, saving, formError, onSav
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
-              <label className="label">Start Date</label>
-              <input className="input" type="date" value={formData.start_date} onChange={e => setFormData(f => ({ ...f, start_date: e.target.value }))} onClick={(e) => e.target.showPicker?.()} />
+              <label className="label">Billing Type</label>
+              <select className="input" value={formData.billing_type || 'One-time'} onChange={e => setFormData(f => ({ ...f, billing_type: e.target.value }))}>
+                <option value="One-time">One-time Project</option>
+                <option value="Retainer">Ongoing Retainer</option>
+              </select>
             </div>
+            {formData.billing_type === 'Retainer' && (
+              <div>
+                <label className="label">Billing Cycle</label>
+                <select className="input" value={formData.billing_cycle || ''} onChange={e => setFormData(f => ({ ...f, billing_cycle: e.target.value }))}>
+                  <option value="">Select Cycle...</option>
+                  <option value="Monthly">Monthly</option>
+                  <option value="Quarterly">Quarterly</option>
+                  <option value="Yearly">Yearly</option>
+                </select>
+              </div>
+            )}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div>
-              <label className="label">Deadline</label>
-              <input className="input" type="date" value={formData.end_date} onChange={e => setFormData(f => ({ ...f, end_date: e.target.value }))} onClick={(e) => e.target.showPicker?.()} />
+              <label className="label">Start Date</label>
+              <input className="input" type="date" value={formData.start_date || ''} onChange={e => setFormData(f => ({ ...f, start_date: e.target.value }))} onClick={(e) => e.target.showPicker?.()} />
             </div>
+            {formData.billing_type !== 'Retainer' && (
+              <div>
+                <label className="label">Deadline</label>
+                <input className="input" type="date" value={formData.end_date || ''} onChange={e => setFormData(f => ({ ...f, end_date: e.target.value }))} onClick={(e) => e.target.showPicker?.()} />
+              </div>
+            )}
           </div>
         </form>
       </div>
@@ -220,7 +242,7 @@ const Projects = () => {
   };
 
   const openAdd = () => { setFormData({ ...EMPTY_FORM, assigned_to: user.id }); setFormError(null); setIsEdit(false); setShowModal(true); };
-  const openEdit = (p) => { setFormData({ id: p.id, client_id: p.client_id, title: p.title, services: p.services || '', description: p.description || '', budget: p.budget || '', status: p.status, start_date: p.start_date?.slice(0, 10) || '', end_date: p.end_date?.slice(0, 10) || '', sales_agent: p.sales_agent || '', closer: p.closer || '', assigned_to: p.assigned_to || '' }); setFormError(null); setIsEdit(true); setShowModal(true); };
+  const openEdit = (p) => { setFormData({ id: p.id, client_id: p.client_id, title: p.title, services: p.services || '', description: p.description || '', budget: p.budget || '', status: p.status, start_date: p.start_date?.slice(0, 10) || '', end_date: p.end_date?.slice(0, 10) || '', sales_agent: p.sales_agent || '', closer: p.closer || '', assigned_to: p.assigned_to || '', billing_type: p.billing_type || 'One-time', billing_cycle: p.billing_cycle || '' }); setFormError(null); setIsEdit(true); setShowModal(true); };
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -228,7 +250,7 @@ const Projects = () => {
     if (!formData.title) { setFormError('Project title is required.'); return; }
     setSaving(true); setFormError(null);
     try {
-      const payload = { client_id: formData.client_id, title: formData.title, services: formData.services || null, description: formData.description, budget: parseFloat(formData.budget) || 0, status: formData.status, start_date: formData.start_date || null, end_date: formData.end_date || null, sales_agent: formData.sales_agent || null, closer: formData.closer || null, assigned_to: formData.assigned_to || user.id };
+      const payload = { client_id: formData.client_id, title: formData.title, services: formData.services || null, description: formData.description, budget: parseFloat(formData.budget) || 0, status: formData.status, start_date: formData.start_date || null, end_date: formData.end_date || null, sales_agent: formData.sales_agent || null, closer: formData.closer || null, assigned_to: formData.assigned_to || user.id, billing_type: formData.billing_type || 'One-time', billing_cycle: formData.billing_cycle || null };
       if (isEdit) { const { error } = await supabase.from('projects').update(payload).eq('id', formData.id); if (error) throw error; }
       else { const { error } = await supabase.from('projects').insert([payload]); if (error) throw error; }
       setShowModal(false); fetchData();
@@ -319,7 +341,13 @@ const Projects = () => {
                       <td style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{p.client_name}</td>
                       <td style={{ fontSize: 13, fontWeight: 600, color: 'var(--accent-light)' }}>${(p.budget || 0).toLocaleString()}</td>
                       <td><span className={`badge ${STATUS_STYLES[p.status] || 'badge-slate'}`}><span className="badge-dot" />{p.status}</span></td>
-                      <td style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>{p.end_date ? new Date(p.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}</td>
+                      <td style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
+                        {p.billing_type === 'Retainer' ? (
+                          <span style={{ fontWeight: 600, color: 'var(--accent)', fontSize: 11 }}>{p.billing_cycle} Retainer</span>
+                        ) : (
+                          p.end_date ? new Date(p.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'
+                        )}
+                      </td>
                       <td style={{ textAlign: 'right' }}><button className="btn btn-ghost btn-icon" onClick={e => { e.stopPropagation(); openEdit(p); }}><ChevronRight size={15} /></button></td>
                     </motion.tr>
                   ))}
@@ -355,7 +383,11 @@ const Projects = () => {
                       <p style={{ fontSize: 11.5, color: 'var(--text-muted)', marginBottom: 10 }}>{p.client_name}</p>
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--accent-light)' }}>${(p.budget || 0).toLocaleString()}</span>
-                        {p.end_date && <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}><Calendar size={11} />{new Date(p.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
+                        {p.billing_type === 'Retainer' ? (
+                          <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--accent)' }}>{p.billing_cycle?.toUpperCase()}</span>
+                        ) : (
+                          p.end_date && <span style={{ fontSize: 11, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}><Calendar size={11} />{new Date(p.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                        )}
                       </div>
                     </motion.div>
                   ))}

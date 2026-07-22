@@ -12,7 +12,7 @@ import { useAuth } from '../hooks/useAuth';
 import { maskCard, formatCardBrand, cardBrandEmoji, formatExpiry } from '../lib/cardCrypto';
 import { CardNumberElement, CardExpiryElement, CardCvcElement, useStripe, useElements } from '@stripe/react-stripe-js';
 
-const STATUS_BADGE = { Active: 'badge-emerald', Onboarding: 'badge-blue', 'At Risk': 'badge-amber', Deactive: 'badge-rose' };
+const STATUS_BADGE = { Active: 'badge-emerald', Onboarding: 'badge-blue', 'At Risk': 'badge-amber', Inactive: 'badge-rose' };
 
 const CARD_ELEMENT_OPTIONS = {
   style: {
@@ -160,7 +160,7 @@ const ClientDetail = () => {
 
   const getHealthScore = () => {
     if (!client) return 80;
-    if (client.status === 'Deactive') return 0;
+    if (client.status === 'Inactive') return 0;
     
     let score = 100;
     const today = new Date();
@@ -446,19 +446,7 @@ const ClientDetail = () => {
           <ArrowLeft size={16} /> Back
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          {(isAdmin || isManager) && (
-            <button 
-              className="btn btn-ghost btn-sm" 
-              onClick={handleDeleteClient} 
-              disabled={isDeleting}
-              style={{ color: 'var(--rose)', background: 'rgba(244,63,94,0.1)' }}
-            >
-              {isDeleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-              {isDeleting ? 'Deleting...' : 'Delete'}
-            </button>
-          )}
           <button className="btn btn-secondary btn-sm" onClick={openEdit}><Edit3 size={14} /> Edit</button>
-
         </div>
       </div>
 
@@ -788,7 +776,7 @@ const ClientDetail = () => {
                       <option value="Active">Active</option>
                       <option value="Onboarding">Onboarding</option>
                       <option value="At Risk">At Risk</option>
-                      <option value="Deactive">Deactive</option>
+                      <option value="Inactive">Inactive</option>
                     </select>
                   </div>
                   <div className="col-span-2" style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 12 }}>
