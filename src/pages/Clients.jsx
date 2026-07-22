@@ -96,6 +96,8 @@ const AddClientModal = ({ onClose, onSaved }) => {
     project_status: 'Pending',
     project_start_date: '',
     project_end_date: '',
+    project_billing_type: 'One-time',
+    project_billing_cycle: '',
 
     // Initial Payment Info
     create_payment: false,
@@ -252,7 +254,9 @@ const AddClientModal = ({ onClose, onSaved }) => {
           sales_agent: form.agent_name || null,
           closer: form.closer_name || null,
           assigned_to: form.assigned_to || user.id,
-          services: form.services || null
+          services: form.services || null,
+          billing_type: form.project_billing_type || 'One-time',
+          billing_cycle: form.project_billing_cycle || null
         };
 
         const { data: projectData, error: projectErr } = await supabase
@@ -574,13 +578,35 @@ const AddClientModal = ({ onClose, onSaved }) => {
                   </div>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                     <div>
+                      <label className="label">Billing Type</label>
+                      <select className="input" value={form.project_billing_type} onChange={e => up('project_billing_type', e.target.value)}>
+                        <option value="One-time">One-time Project</option>
+                        <option value="Retainer">Retainer / Ongoing</option>
+                      </select>
+                    </div>
+                    {form.project_billing_type === 'Retainer' && (
+                      <div>
+                        <label className="label">Billing Cycle</label>
+                        <select className="input" value={form.project_billing_cycle} onChange={e => up('project_billing_cycle', e.target.value)}>
+                          <option value="">Select Cycle</option>
+                          <option value="Monthly">Monthly</option>
+                          <option value="Quarterly">Quarterly</option>
+                          <option value="Yearly">Yearly</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div>
                       <label className="label">Start Date</label>
                       <input className="input" type="date" value={form.project_start_date} onChange={e => up('project_start_date', e.target.value)} onClick={(e) => e.target.showPicker?.()} />
                     </div>
-                    <div>
-                      <label className="label">Deadline</label>
-                      <input className="input" type="date" value={form.project_end_date} onChange={e => up('project_end_date', e.target.value)} onClick={(e) => e.target.showPicker?.()} />
-                    </div>
+                    {form.project_billing_type !== 'Retainer' && (
+                      <div>
+                        <label className="label">Deadline</label>
+                        <input className="input" type="date" value={form.project_end_date} onChange={e => up('project_end_date', e.target.value)} onClick={(e) => e.target.showPicker?.()} />
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
