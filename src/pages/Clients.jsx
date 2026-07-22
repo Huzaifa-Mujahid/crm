@@ -830,16 +830,27 @@ const Clients = () => {
                           </div>
                         </td>
                         <td>
-                          {client.payment_method ? (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                              <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 5 }}>
-                                <CreditCard size={12} style={{ color: 'var(--accent-light)' }} /> {client.payment_method}
-                              </p>
-                              <p style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace', letterSpacing: '0.05em' }}>
-                                {client.stripe_card_last4 ? `**** **** **** ${client.stripe_card_last4}` : '—'}
-                              </p>
-                            </div>
-                          ) : <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>}
+                          {(() => {
+                            const isCardMethod = ['Visa', 'MasterCard', 'AMEX', 'Discover'].includes(client.payment_method);
+                            const hasCardDetails = !!client.stripe_card_last4;
+                            const shouldShow = hasCardDetails || (client.payment_method && !isCardMethod);
+                            
+                            if (!shouldShow) return <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>—</span>;
+                            
+                            return (
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                <p style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                                  <CreditCard size={12} style={{ color: 'var(--accent-light)' }} /> 
+                                  {client.stripe_card_brand ? formatCardBrand(client.stripe_card_brand) : client.payment_method}
+                                </p>
+                                {hasCardDetails && (
+                                  <p style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'monospace', letterSpacing: '0.05em' }}>
+                                    **** **** **** {client.stripe_card_last4}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td>
                           <span className={`badge ${STATUS_BADGE[client.status] || 'badge-slate'}`}>

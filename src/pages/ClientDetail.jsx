@@ -160,32 +160,7 @@ const ClientDetail = () => {
 
   const getHealthScore = () => {
     if (!client) return 80;
-    if (client.status === 'Inactive') return 0;
-    
-    let score = 100;
-    const today = new Date();
-    today.setHours(0,0,0,0);
-    
-    // 1. Overdue payments check
-    const overduePayments = (data.payments || []).filter(p => !p.is_paid && p.due_date && new Date(p.due_date) < today);
-    score -= overduePayments.length * 25;
-    
-    // 2. Overdue tasks check
-    const overdueTasks = (data.tasks || []).filter(t => t.status !== 'Completed' && t.due_date && new Date(t.due_date) < today);
-    score -= overdueTasks.length * 15;
-    
-    // 3. Cap based on status
-    if (client.status === 'At Risk') {
-      score = Math.min(score, 40);
-    }
-    
-    // 4. Inactive check (no active projects in progress or pending)
-    const activeProjects = (data.projects || []).filter(p => p.status === 'In Progress' || p.status === 'Pending');
-    if (activeProjects.length === 0) {
-      score -= 15;
-    }
-    
-    return Math.max(10, Math.min(100, score));
+    return client.health_score ?? 80;
   };
 
   useEffect(() => { if (id) fetchClientData(); }, [id]);
