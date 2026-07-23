@@ -64,11 +64,11 @@ const PaymentModal = ({ form, setForm, projects, clients, saving, err, onSave, o
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div>
                     <label className="label">Payment Type</label>
-                    <select className="input" value={form.payment_type || 'One-time'} onChange={e => setForm(f => ({ ...f, payment_type: e.target.value }))}>
-                      <option value="One-time">One-time</option>
+                    <select className="input" value={form.payment_type || 'One time'} onChange={e => setForm(f => ({ ...f, payment_type: e.target.value }))}>
+                      <option value="One time">One time</option>
                       <option value="Monthly">Monthly</option>
-                      <option value="Weekly">Weekly</option>
-                      <option value="Setup Fee">Setup Fee</option>
+                      <option value="6 Months">6 Months</option>
+                      <option value="Yearly">Yearly</option>
                     </select>
                   </div>
                   <div>
@@ -86,11 +86,11 @@ const PaymentModal = ({ form, setForm, projects, clients, saving, err, onSave, o
                   </div>
                   <div>
                     <label className="label">Payment Type</label>
-                    <select className="input" value={form.payment_type || 'One-time'} onChange={e => setForm(f => ({ ...f, payment_type: e.target.value }))}>
-                      <option value="One-time">One-time</option>
+                    <select className="input" value={form.payment_type || 'One time'} onChange={e => setForm(f => ({ ...f, payment_type: e.target.value }))}>
+                      <option value="One time">One time</option>
                       <option value="Monthly">Monthly</option>
-                      <option value="Weekly">Weekly</option>
-                      <option value="Setup Fee">Setup Fee</option>
+                      <option value="6 Months">6 Months</option>
+                      <option value="Yearly">Yearly</option>
                     </select>
                   </div>
                 </div>

@@ -26,7 +26,7 @@ const MeetingModal = ({ form, setForm, clients, saving, err, onSave, onClose }) 
               <label className="label">Client *</label>
               <select className="input" required value={form.client_id} onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}>
                 <option value="">Select client…</option>
-                {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+                {clients.map(c => <option key={c.id} value={c.id}>{c.company || c.full_name}</option>)}
               </select>
             </div>
             <div>
@@ -103,13 +103,13 @@ const Meetings = () => {
     setLoading(true);
     try {
       let meetQuery = supabase.from('meetings').select('*').order('scheduled_at', { ascending: true });
-      let clientsQuery = supabase.from('clients').select('id, full_name');
+      let clientsQuery = supabase.from('clients').select('id, full_name, company');
       if (isStaff) {
         meetQuery = meetQuery.eq('created_by', user.id);
         clientsQuery = clientsQuery.eq('assigned_to', user.id);
       }
       const [{ data: mData }, { data: cData }] = await Promise.all([meetQuery, clientsQuery]);
-      const map = (cData || []).reduce((a, c) => ({ ...a, [c.id]: c.full_name }), {});
+      const map = (cData || []).reduce((a, c) => ({ ...a, [c.id]: c.company || c.full_name }), {});
       setMeetings((mData || []).map(m => ({ ...m, client_name: map[m.client_id] || 'Unknown' })));
       setClients(cData || []);
     } catch (e) { console.error(e); } finally { setLoading(false); }

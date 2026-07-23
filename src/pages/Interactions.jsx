@@ -21,7 +21,7 @@ const InteractionModal = ({ form, setForm, clients, saving, err, onSave, onClose
             <label className="label">Client *</label>
             <select className="input" required value={form.client_id} onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}>
               <option value="">Select client…</option>
-              {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+                {clients.map(c => <option key={c.id} value={c.id}>{c.company || c.full_name}</option>)}
             </select>
           </div>
           <div>
@@ -85,8 +85,8 @@ const Interactions = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      let intQuery = supabase.from('interactions').select('*, clients(full_name)').order('interaction_date', { ascending: false });
-      let clientsQuery = supabase.from('clients').select('id, full_name');
+      let intQuery = supabase.from('interactions').select('*, clients(full_name, company)').order('interaction_date', { ascending: false });
+      let clientsQuery = supabase.from('clients').select('id, full_name, company');
       if (isStaff) {
         intQuery = intQuery.eq('created_by', user.id);
         clientsQuery = clientsQuery.eq('assigned_to', user.id);
@@ -198,7 +198,7 @@ const Interactions = () => {
                     <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 10 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <span className={`badge ${getBadge(item.type)}`}>{item.type}</span>
-                        <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>{item.clients?.full_name || 'Unknown Client'}</span>
+                        <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>{item.clients?.company || item.clients?.full_name || 'Unknown Client'}</span>
                       </div>
                       <span style={{ fontSize: 12, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 5 }}>
                         <Clock size={12} />

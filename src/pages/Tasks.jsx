@@ -43,7 +43,7 @@ const Tasks = () => {
   const fetchTasks = async () => {
     try {
       setLoading(true);
-      let query = supabase.from('tasks').select('*, clients(full_name)').order('due_date', { ascending: true });
+      let query = supabase.from('tasks').select('*, clients(full_name, company)').order('due_date', { ascending: true });
       
       if (!isAdmin && !isManager) {
         query = query.eq('assigned_to', user.id);
@@ -71,7 +71,7 @@ const Tasks = () => {
   };
 
   const fetchClients = async () => {
-    const { data } = await supabase.from('clients').select('id, full_name');
+    const { data } = await supabase.from('clients').select('id, full_name, company');
     setClients(data || []);
   };
 
@@ -278,7 +278,7 @@ const Tasks = () => {
                     </div>
                     <div style={{ minWidth: 0 }}>
                       <p style={{ fontSize: 14, fontWeight: 700, color: isCompleted ? 'var(--text-muted)' : 'var(--text-primary)', textDecoration: isCompleted ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.title}</p>
-                      <p style={{ fontSize: 12, color: 'var(--accent-light)', fontWeight: 600 }}>{task.clients?.full_name || 'Internal'}</p>
+                      <p style={{ fontSize: 12, color: 'var(--accent-light)', fontWeight: 600 }}>{task.clients?.company || task.clients?.full_name || 'Internal'}</p>
                     </div>
                   </div>
                   <button onClick={() => toggleTaskStatus(task.id, task.status)} style={{ width: 28, height: 28, borderRadius: '50%', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', background: isCompleted ? 'var(--emerald)' : 'var(--bg-elevated)', color: isCompleted ? '#fff' : 'var(--text-muted)', flexShrink: 0, marginLeft: 8 }} title="Mark as complete">
@@ -364,7 +364,7 @@ const Tasks = () => {
                     <label className="label">Related Client</label>
                     <select className="input" value={newTask.client_id} onChange={e => setNewTask({...newTask, client_id: e.target.value})}>
                       <option value="">Select Client (Optional)</option>
-                      {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+                      {clients.map(c => <option key={c.id} value={c.id}>{c.company || c.full_name}</option>)}
                     </select>
                   </div>
 

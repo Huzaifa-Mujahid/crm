@@ -71,7 +71,7 @@ const ProjectModal = ({ formData, setFormData, clients, saving, formError, onSav
               <label className="label">Client *</label>
               <select className="input" required value={formData.client_id} onChange={e => setFormData(f => ({ ...f, client_id: e.target.value }))}>
                 <option value="">Select a client…</option>
-                {clients.map(c => <option key={c.id} value={c.id}>{c.full_name}</option>)}
+                {clients.map(c => <option key={c.id} value={c.id}>{c.company || c.full_name}</option>)}
               </select>
             </div>
           )}
@@ -228,14 +228,14 @@ const Projects = () => {
     setLoading(true);
     try {
       let projQuery = supabase.from('projects').select('*').order('created_at', { ascending: false });
-      let clientsQuery = supabase.from('clients').select('id, full_name');
+      let clientsQuery = supabase.from('clients').select('id, full_name, company');
       // Staff only see their assigned projects and clients
       if (isStaff) {
         projQuery = projQuery.eq('assigned_to', user.id);
         clientsQuery = clientsQuery.eq('assigned_to', user.id);
       }
       const [{ data: pData }, { data: cData }] = await Promise.all([projQuery, clientsQuery]);
-      const map = (cData || []).reduce((a, c) => ({ ...a, [c.id]: c.full_name }), {});
+      const map = (cData || []).reduce((a, c) => ({ ...a, [c.id]: c.company || c.full_name }), {});
       setProjects((pData || []).map(p => ({ ...p, client_name: map[p.client_id] || 'Unknown' })));
       setClients(cData || []);
     } catch (e) { console.error(e); } finally { setLoading(false); }
