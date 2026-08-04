@@ -244,15 +244,71 @@ const Projects = () => {
   const openAdd = () => { setFormData({ ...EMPTY_FORM, assigned_to: user.id }); setFormError(null); setIsEdit(false); setShowModal(true); };
   const openEdit = (p) => { setFormData({ id: p.id, client_id: p.client_id, title: p.title, services: p.services || '', description: p.description || '', budget: p.budget || '', status: p.status, start_date: p.start_date?.slice(0, 10) || '', end_date: p.end_date?.slice(0, 10) || '', sales_agent: p.sales_agent || '', closer: p.closer || '', assigned_to: p.assigned_to || '', billing_type: p.billing_type || 'One-time', billing_cycle: p.billing_cycle || '' }); setFormError(null); setIsEdit(true); setShowModal(true); };
 
+  // Helper: calculate next due date based on billing cycle
+  const calcNextDueDate = (startDateStr, cycle) => {
+    if (!startDateStr) return null;
+    const d = new Date(startDateStr);
+    if (cycle === 'Monthly')     d.setMonth(d.getMonth() + 1);
+    else if (cycle === 'Quarterly') d.setMonth(d.getMonth() + 3);
+    else if (cycle === 'Yearly') d.setFullYear(d.getFullYear() + 1);
+    return d.toISOString().split('T')[0];
+  };
+
   const handleSave = async (e) => {
     e.preventDefault();
     if (!formData.client_id && !isEdit) { setFormError('Please select a client.'); return; }
     if (!formData.title) { setFormError('Project title is required.'); return; }
     setSaving(true); setFormError(null);
     try {
-      const payload = { client_id: formData.client_id, title: formData.title, services: formData.services || null, description: formData.description, budget: parseFloat(formData.budget) || 0, status: formData.status, start_date: formData.start_date || null, end_date: formData.end_date || null, sales_agent: formData.sales_agent || null, closer: formData.closer || null, assigned_to: formData.assigned_to || user.id, billing_type: formData.billing_type || 'One-time', billing_cycle: formData.billing_cycle || null };
-      if (isEdit) { const { error } = await supabase.from('projects').update(payload).eq('id', formData.id); if (error) throw error; }
-      else { const { error } = await supabase.from('projects').insert([payload]); if (error) throw error; }
+      const payload = {
+        client_id: formData.client_id,
+        title: formData.title,
+        services: formData.services || null,
+        description: formData.description,
+        budget: parseFloat(formData.budget) || 0,
+        status: formData.status,
+        start_date: formData.start_date || null,
+        end_date: formData.end_date || null,
+        sales_agent: formData.sales_agent || null,
+        closer: formData.closer || null,
+        assigned_to: formData.assigned_to || user.id,
+        billing_type: formData.billing_type || 'One-time',
+        billing_cycle: formData.billing_cycle || null
+      };
+
+      if (isEdit) {
+        const { error } = await supabase.from('projects').update(payload).eq('id', formData.id);
+        if (error) throw error;
+      } else {
+        // Insert the new project and get the returned id
+        const { data: newProj, error } = await supabase.from('projects').insert([payload]).select('id').single();
+        if (error) throw error;
+
+        // Auto-create first unpaid payment record for Retainer projects
+        // Wrapped in its own try-catch: if payment insert fails, project is still saved
+        if (
+          formData.billing_type === 'Retainer' &&
+          formData.billing_cycle &&
+          formData.start_date &&
+          parseFloat(formData.budget) > 0
+        ) {
+          try {
+            const nextDue = calcNextDueDate(formData.start_date, formData.billing_cycle);
+            const { error: payErr } = await supabase.from('payments').insert([{
+              project_id: newProj.id,
+              amount: parseFloat(formData.budget),
+              payment_type: formData.billing_cycle,
+              due_date: nextDue,
+              is_paid: false,
+              payment_date: null
+            }]);
+            if (payErr) console.warn('Auto-payment insert warning:', payErr.message);
+          } catch (payInsertErr) {
+            console.warn('Auto-payment insert failed (project saved):', payInsertErr.message);
+          }
+        }
+      }
+
       setShowModal(false); fetchData();
     } catch (e) { setFormError(e.message); } finally { setSaving(false); }
   };

@@ -6,6 +6,7 @@ import { CardNumberElement, CardExpiryElement, CardCvcElement, useStripe, useEle
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { formatCardBrand } from '../lib/cardCrypto';
+import { ensureRecurringPaymentRows } from '../lib/recurringPayments';
 
 const STATUS_BADGE = {
   Active:     'badge-emerald',
@@ -104,6 +105,7 @@ const AddClientModal = ({ onClose, onSaved }) => {
     payment_total: '',
     payment_paid_now: '',
     payment_type: 'One-time',
+    payment_date: new Date().toISOString().split('T')[0],
     payment_due_date: '',
   });
 
@@ -283,7 +285,7 @@ const AddClientModal = ({ onClose, onSaved }) => {
               payment_type: form.payment_type || 'One-time',
               due_date: new Date().toISOString().split('T')[0],
               is_paid: true,
-              payment_date: new Date().toISOString()
+              payment_date: form.payment_date || new Date().toISOString().split('T')[0]
             });
           }
 
@@ -305,6 +307,12 @@ const AddClientModal = ({ onClose, onSaved }) => {
               .insert(paymentsToInsert);
             if (paymentErr) throw paymentErr;
           }
+
+          // NOTE: We do NOT call ensureRecurringPaymentRows here.
+          // Reason: Row 2 above (is_paid=false, due_date=payment_due_date) already serves as the
+          // pending/unpaid tracking row for this month. Calling ensureRecurring immediately after
+          // would create a DUPLICATE for the same project+month.
+          // The Payments page re-runs ensureRecurring on next load and handles any missing future months.
         }
       }
 
@@ -667,12 +675,18 @@ const AddClientModal = ({ onClose, onSaved }) => {
                         </select>
                       </div>
                       <div>
-                        <label className="label">Remaining Due Date</label>
-                        <input className="input" type="date" value={form.payment_due_date}
-                          onChange={e => up('payment_due_date', e.target.value)}
-                          onClick={e => e.target.showPicker?.()}
-                          placeholder="When is balance due?" />
+                        <label className="label">Payment Date</label>
+                        <input className="input" type="date" value={form.payment_date || ''}
+                          onChange={e => up('payment_date', e.target.value)}
+                          onClick={e => e.target.showPicker?.()} />
                       </div>
+                    </div>
+                    <div>
+                      <label className="label">Remaining Due Date</label>
+                      <input className="input" type="date" value={form.payment_due_date}
+                        onChange={e => up('payment_due_date', e.target.value)}
+                        onClick={e => e.target.showPicker?.()}
+                        placeholder="When is balance due?" />
                     </div>
 
                     {/* Summary preview */}

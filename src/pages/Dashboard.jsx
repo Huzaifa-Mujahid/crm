@@ -78,11 +78,13 @@ const Dashboard = () => {
   const [cityData, setCityData] = useState([]);
   const [remainingDuesData, setRemainingDuesData] = useState([]);
   const [monthlyClientsData, setMonthlyClientsData] = useState([]);
+  const [monthlyDueThisMonthData, setMonthlyDueThisMonthData] = useState([]);
   const [allDuePaymentsData, setAllDuePaymentsData] = useState({ total: 0, list: [] });
   const [newClientsMonthData, setNewClientsMonthData] = useState({ count: 0, list: [] });
   const [monthlyClientChartData, setMonthlyClientChartData] = useState([]);
   const [completedTasks, setCompletedTasks] = useState([]);
   const [selectedMonth, setSelectedMonth] = useState('');
+  const [duePaymentsFilter, setDuePaymentsFilter] = useState('this_month');
   const navigate = useNavigate();
 
   useEffect(() => { 
@@ -306,6 +308,8 @@ const Dashboard = () => {
         // 5. All Due Payments
         const dueList = [];
         let totalDue = 0;
+        const existingPendingKeys = new Set();
+
         paymentsList.forEach(pay => {
           if (!pay.is_paid) {
             const cId = projToClient[pay.project_id];
@@ -313,19 +317,92 @@ const Dashboard = () => {
               const cName = clientNameMap[cId] || 'Unknown Client';
               const amt = parseFloat(pay.amount || 0);
               totalDue += amt;
+              const dueKey = `${pay.project_id || 'unknown'}:${pay.due_date || 'none'}`;
+              existingPendingKeys.add(dueKey);
               dueList.push({
                 id: pay.id,
                 name: cName,
                 amount: amt,
-                dueDate: pay.due_date
+                dueDate: pay.due_date,
+                isDerived: false
               });
             }
           }
         });
+
+        const addMonths = (date, months) => {
+          const newDate = new Date(date);
+          newDate.setMonth(newDate.getMonth() + months);
+          return newDate;
+        };
+
+        projectsList.forEach(project => {
+          if (project.billing_type !== 'Retainer' || project.billing_cycle !== 'Monthly') return;
+
+          const cId = project.client_id;
+          if (!cId) return;
+
+          const cName = clientNameMap[cId] || 'Unknown Client';
+          const projectAmount = parseFloat(project.budget || 0);
+          if (!projectAmount) return;
+
+          const startDate = project.start_date ? new Date(project.start_date) : new Date();
+          const projectPayments = paymentsList.filter(pay => pay.project_id === project.id);
+          const sortedProjectPayments = [...projectPayments].sort((a, b) => new Date(a.due_date || 0) - new Date(b.due_date || 0));
+          const latestPayment = sortedProjectPayments[sortedProjectPayments.length - 1];
+          let nextDueDate = startDate;
+
+          if (latestPayment?.due_date) {
+            const lastDue = new Date(latestPayment.due_date);
+            if (latestPayment.is_paid) {
+              nextDueDate = addMonths(lastDue, 1);
+            } else {
+              nextDueDate = lastDue;
+            }
+          }
+
+          const dueKey = `${project.id}:${nextDueDate.toISOString().split('T')[0]}`;
+          if (existingPendingKeys.has(dueKey)) return;
+
+          totalDue += projectAmount;
+          dueList.push({
+            id: `rec-${project.id}`,
+            name: cName,
+            amount: projectAmount,
+            dueDate: nextDueDate.toISOString().split('T')[0],
+            isDerived: true,
+            projectId: project.id
+          });
+          existingPendingKeys.add(dueKey);
+        });
+
         dueList.sort((a, b) => new Date(a.dueDate || 0) - new Date(b.dueDate || 0));
         setAllDuePaymentsData({ total: totalDue, list: dueList });
 
-        // 6. Clients this month
+        // 6. Monthly recurring clients due this month
+        const nowDate = new Date();
+        const currentMonthStart = new Date(nowDate.getFullYear(), nowDate.getMonth(), 1);
+        const currentMonthEnd = new Date(nowDate.getFullYear(), nowDate.getMonth() + 1, 0);
+        const dueThisMonthList = [];
+
+        dueList.forEach(item => {
+          const payDate = item.dueDate ? new Date(item.dueDate) : null;
+          if (!payDate) return;
+          if (payDate < currentMonthStart || payDate > currentMonthEnd) return;
+
+          dueThisMonthList.push({
+            id: item.id,
+            name: item.name,
+            amount: item.amount,
+            dueDate: item.dueDate,
+            paymentType: item.isDerived ? 'Monthly Retainer' : 'Pending Payment'
+          });
+        });
+
+        dueThisMonthList.sort((a, b) => new Date(a.dueDate || 0) - new Date(b.dueDate || 0));
+        setMonthlyDueThisMonthData(dueThisMonthList);
+
+        // 7. Clients this month
         const now = new Date();
         const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
@@ -333,10 +410,12 @@ const Dashboard = () => {
         
         // Setup data for 6 month chart
         const clientsChartMap = {};
+        const monthKeys = [];
         for (let i = 5; i >= 0; i--) {
-          let m = currentMonth - i;
-          if (m < 0) m += 12;
-          clientsChartMap[monthsStr[m]] = 0;
+          const d = new Date(currentYear, currentMonth - i, 1);
+          const key = `${d.getFullYear()}-${d.getMonth()}`;
+          clientsChartMap[key] = { month: monthsStr[d.getMonth()], clients: 0 };
+          monthKeys.push(key);
         }
 
         clientsList.forEach(cl => {
@@ -346,15 +425,15 @@ const Dashboard = () => {
             if (dt.getMonth() === currentMonth && dt.getFullYear() === currentYear) {
               monthClients.push(cl);
             }
-            // Add to chart map if in last 6 months (approximate by month name)
-            const mName = monthsStr[dt.getMonth()];
-            if (clientsChartMap[mName] !== undefined) {
-              clientsChartMap[mName] += 1;
+            // Add to chart map if in last 6 months
+            const key = `${dt.getFullYear()}-${dt.getMonth()}`;
+            if (clientsChartMap[key] !== undefined) {
+              clientsChartMap[key].clients += 1;
             }
           }
         });
         setNewClientsMonthData({ count: monthClients.length, list: monthClients });
-        setMonthlyClientChartData(Object.keys(clientsChartMap).map(k => ({ month: k, clients: clientsChartMap[k] })));
+        setMonthlyClientChartData(monthKeys.map(k => clientsChartMap[k]));
       }
 
       // Build revenue chart data
@@ -401,6 +480,31 @@ const Dashboard = () => {
     });
     return Object.keys(intervals).map(k => ({ month: k, revenue: intervals[k] }));
   }, [selectedMonth, revChartData, rawRevData]);
+
+  const filteredDuePayments = React.useMemo(() => {
+    let list = allDuePaymentsData.list || [];
+    if (duePaymentsFilter === 'this_month') {
+      const now = new Date();
+      const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+      const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      return list.filter(item => {
+        const payDate = item.dueDate ? new Date(item.dueDate) : null;
+        return payDate && payDate >= currentMonthStart && payDate <= currentMonthEnd;
+      });
+    } else if (duePaymentsFilter === 'all') {
+      return list;
+    } else if (duePaymentsFilter) { // specific date YYYY-MM-DD
+      return list.filter(item => {
+        if (!item.dueDate) return false;
+        // safely extract YYYY-MM-DD from any timestamp or date string
+        const itemDateStr = item.dueDate.split('T')[0];
+        return itemDateStr === duePaymentsFilter;
+      });
+    }
+    return list;
+  }, [allDuePaymentsData.list, duePaymentsFilter]);
+
+  const filteredDuePaymentsTotal = filteredDuePayments.reduce((acc, curr) => acc + curr.amount, 0);
 
   return (
     <div className="animate-in" style={{ paddingBottom: 40 }}>
@@ -688,28 +792,64 @@ const Dashboard = () => {
       {/* Custom Cards requested by User */}
       {(isAdmin || isManager) && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }} className="dash-grid">
-          {/* Due Payments Card */}
+          {/* Pending Payments Card */}
           <div className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 18 }}>
               <div>
-                <p className="section-title">All Due Payments</p>
-                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Pending payments across all clients</p>
+                <p className="section-title">Pending Payments</p>
+                <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <select 
+                    className="input" 
+                    style={{ padding: '4px 8px', fontSize: 12 }} 
+                    value={duePaymentsFilter === 'this_month' || duePaymentsFilter === 'all' ? duePaymentsFilter : 'custom'}
+                    onChange={(e) => {
+                      if (e.target.value === 'custom') {
+                        setDuePaymentsFilter(new Date().toISOString().split('T')[0]);
+                      } else {
+                        setDuePaymentsFilter(e.target.value);
+                      }
+                    }}
+                  >
+                    <option value="this_month">Due This Month</option>
+                    <option value="all">All Pending</option>
+                    <option value="custom">Specific Date...</option>
+                  </select>
+                  
+                  {duePaymentsFilter !== 'this_month' && duePaymentsFilter !== 'all' && (
+                    <input 
+                      type="date" 
+                      className="input" 
+                      style={{ padding: '4px 8px', fontSize: 12, width: 130 }} 
+                      value={duePaymentsFilter}
+                      onChange={(e) => setDuePaymentsFilter(e.target.value)}
+                    />
+                  )}
+                  {duePaymentsFilter !== 'this_month' && duePaymentsFilter !== 'all' && (
+                    <button 
+                      onClick={() => setDuePaymentsFilter('this_month')} 
+                      style={{ fontSize: 11, color: 'var(--text-muted)', cursor: 'pointer', background: 'none', border: 'none' }}
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
               </div>
               <div style={{ textAlign: 'right' }}>
                 <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total Due</p>
                 <p style={{ fontSize: 16, fontWeight: 800, color: 'var(--rose)' }}>
-                  ${allDuePaymentsData.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  ${filteredDuePaymentsTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
+                <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>{filteredDuePayments.length} clients</p>
               </div>
             </div>
             
-            {allDuePaymentsData.list.length === 0 ? (
+            {filteredDuePayments.length === 0 ? (
               <div className="empty-state" style={{ flex: 1, padding: '24px 0' }}>
-                <p className="empty-desc">No pending payments.</p>
+                <p className="empty-desc">No pending payments for this selection.</p>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto', maxHeight: 300 }}>
-                {allDuePaymentsData.list.map((due, idx) => (
+                {filteredDuePayments.map((due, idx) => (
                   <div key={due.id || idx} style={{ 
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     padding: '12px 14px', borderRadius: 10,
@@ -720,7 +860,7 @@ const Dashboard = () => {
                         {due.name}
                       </p>
                       <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                        Due: {due.dueDate ? new Date(due.dueDate).toLocaleDateString() : 'N/A'}
+                        {due.isDerived ? 'Monthly Retainer' : 'Pending Payment'} • Due: {due.dueDate ? new Date(due.dueDate).toLocaleDateString() : 'N/A'}
                       </p>
                     </div>
                     <div style={{ textAlign: 'right' }}>

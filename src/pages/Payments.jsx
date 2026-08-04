@@ -3,8 +3,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Clock, Calendar, X, Loader2, TrendingUp, TrendingDown, ArrowUpRight, Plus, DollarSign } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
+import { ensureRecurringPaymentRows } from '../lib/recurringPayments';
 
-const EMPTY_FORM = { client_id: '', project_id: '', amount: '', due_date: '', is_paid: false, payment_total: '', payment_paid_now: '', payment_due_date: '', payment_type: 'One-time' };
+const EMPTY_FORM = { client_id: '', project_id: '', amount: '', due_date: '', is_paid: false, payment_total: '', payment_paid_now: '', payment_due_date: '', payment_type: 'One-time', payment_date: new Date().toISOString().split('T')[0] };
 
 const PaymentModal = ({ form, setForm, projects, clients, saving, err, onSave, onCancelPayment, onClose, isAdmin }) => {
   const isEdit = !!form.id;
@@ -72,9 +73,13 @@ const PaymentModal = ({ form, setForm, projects, clients, saving, err, onSave, o
                     </select>
                   </div>
                   <div>
-                    <label className="label">Remaining Due Date</label>
-                    <input className="input" type="date" value={form.payment_due_date || ''} onChange={e => setForm(f => ({ ...f, payment_due_date: e.target.value }))} onClick={(e) => e.target.showPicker?.()} />
+                    <label className="label">Payment Date</label>
+                    <input className="input" type="date" value={form.payment_date || ''} onChange={e => setForm(f => ({ ...f, payment_date: e.target.value }))} onClick={(e) => e.target.showPicker?.()} />
                   </div>
+                </div>
+                <div>
+                  <label className="label">Remaining Due Date</label>
+                  <input className="input" type="date" value={form.payment_due_date || ''} onChange={e => setForm(f => ({ ...f, payment_due_date: e.target.value }))} onClick={(e) => e.target.showPicker?.()} />
                 </div>
               </>
             ) : (
@@ -94,9 +99,15 @@ const PaymentModal = ({ form, setForm, projects, clients, saving, err, onSave, o
                     </select>
                   </div>
                 </div>
-                <div>
-                  <label className="label">Due Date</label>
-                  <input className="input" type="date" value={form.due_date || ''} onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} onClick={(e) => e.target.showPicker?.()} />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label className="label">Payment Date</label>
+                    <input className="input" type="date" value={form.payment_date || ''} onChange={e => setForm(f => ({ ...f, payment_date: e.target.value }))} onClick={(e) => e.target.showPicker?.()} />
+                  </div>
+                  <div>
+                    <label className="label">Due Date</label>
+                    <input className="input" type="date" value={form.due_date || ''} onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} onClick={(e) => e.target.showPicker?.()} />
+                  </div>
                 </div>
                 <label style={{ display: 'flex', alignItems: 'flex-start', gap: 12, padding: 14, background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 10, cursor: 'pointer', marginTop: 8 }}>
                   <input type="checkbox" checked={form.is_paid || false} onChange={e => setForm(f => ({ ...f, is_paid: e.target.checked }))} style={{ marginTop: 2, width: 16, height: 16 }} />
@@ -141,30 +152,48 @@ const Payments = () => {
   const [activeFilter, setActiveFilter] = useState('All');
 
   const filteredPayments = payments.filter(p => {
-    if (activeFilter === 'Outstanding') return !p.is_paid;
+    if (activeFilter === 'Outstanding') return !p.is_paid && !p.is_cancelled; // exclude cancelled
     if (activeFilter === 'Paid') return p.is_paid;
     if (activeFilter === 'Overdue') return p.is_overdue;
     return true;
   });
 
-  useEffect(() => { fetchData(); }, []);
+  useEffect(() => { fetchData(false); }, []);
 
-  const fetchData = async () => {
+  // skipRecurring=true → skip the auto-row generator (used after manual saves to avoid duplicates)
+  const fetchData = async (skipRecurring = false) => {
     setLoading(true);
     try {
       const [{ data: pData }, { data: prData }, { data: cData }] = await Promise.all([
         supabase.from('payments').select('*').order('created_at', { ascending: false }),
-        supabase.from('projects').select('id, title, client_id, status'),
+        supabase.from('projects').select('id, title, client_id, status, billing_type, billing_cycle, budget, start_date'),
         supabase.from('clients').select('id, full_name, company'),
       ]);
       const clientMap = (cData || []).reduce((a, c) => ({ ...a, [c.id]: c.company || c.full_name }), {});
-      const projectMap = (prData || []).reduce((a, p) => ({ ...a, [p.id]: { title: p.title, client_id: p.client_id, status: p.status, client_name: clientMap[p.client_id] || 'Unknown' } }), {});
+      const projectMap = (prData || []).reduce((a, p) => ({ ...a, [p.id]: { title: p.title, client_id: p.client_id, status: p.status, client_name: clientMap[p.client_id] || 'Unknown', billing_type: p.billing_type, billing_cycle: p.billing_cycle, budget: p.budget, start_date: p.start_date } }), {});
+
+      // Only run recurring-row auto-generator on initial page load, NOT after manual saves.
+      // Running it after a manual insert causes a duplicate for the same project+date.
+      if (!skipRecurring) {
+        await ensureRecurringPaymentRows({ supabase, projects: prData || [], payments: pData || [] });
+      }
+      const { data: refreshedPayments } = await supabase.from('payments').select('*').order('created_at', { ascending: false });
+      const refreshedPaymentRows = refreshedPayments || [];
       
       let totalDue = 0, totalPaid = 0, overdue = 0;
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      const enriched = (pData || []).map(p => {
+      const addMonths = (date, months) => {
+        const newDate = new Date(date);
+        newDate.setMonth(newDate.getMonth() + months);
+        return newDate;
+      };
+
+      const enriched = [];
+      const existingPendingKeys = new Set();
+
+      (refreshedPaymentRows).forEach(p => {
         const isOverdue = !p.is_paid && !p.is_cancelled && p.due_date && new Date(p.due_date) < today;
         const amt = p.amount || 0;
         
@@ -175,16 +204,65 @@ const Payments = () => {
             if (isOverdue) overdue += amt;
           }
         }
-        
-        return { 
+
+        const entry = { 
           ...p, 
           project_title: projectMap[p.project_id]?.title || 'Unknown', 
           client_id: projectMap[p.project_id]?.client_id || '',
           client_name: projectMap[p.project_id]?.client_name || 'Unknown',
           project_status: projectMap[p.project_id]?.status || 'Unknown',
-          is_overdue: isOverdue 
+          is_overdue: isOverdue,
+          source: 'payment-row'
         };
+        enriched.push(entry);
+        existingPendingKeys.add(`${p.project_id || 'unknown'}:${p.due_date || 'none'}`);
       });
+
+      (prData || []).forEach(project => {
+        if (project.billing_type !== 'Retainer' || project.billing_cycle !== 'Monthly') return;
+        const cId = project.client_id;
+        if (!cId) return;
+        const projectAmount = parseFloat(project.budget || 0);
+        if (!projectAmount) return;
+
+        const startDate = project.start_date ? new Date(project.start_date) : new Date();
+        const projectPayments = (refreshedPaymentRows).filter(pay => pay.project_id === project.id);
+        const sortedProjectPayments = [...projectPayments].sort((a, b) => new Date(a.due_date || 0) - new Date(b.due_date || 0));
+        const latestPayment = sortedProjectPayments[sortedProjectPayments.length - 1];
+        let nextDueDate = startDate;
+
+        if (latestPayment?.due_date) {
+          const lastDue = new Date(latestPayment.due_date);
+          if (latestPayment.is_paid) nextDueDate = addMonths(lastDue, 1);
+          else nextDueDate = lastDue;
+        }
+
+        const dueKey = `${project.id}:${nextDueDate.toISOString().split('T')[0]}`;
+        if (existingPendingKeys.has(dueKey)) return;
+
+        const dueDate = nextDueDate.toISOString().split('T')[0];
+        const derivedIsOverdue = !today ? false : new Date(dueDate) < today;
+        totalDue += projectAmount;
+        if (derivedIsOverdue) overdue += projectAmount;
+
+        enriched.push({
+          id: `rec-${project.id}`,
+          project_id: project.id,
+          amount: projectAmount,
+          due_date: dueDate,
+          is_paid: false,
+          is_cancelled: false,
+          payment_type: 'Monthly',
+          project_title: project.title,
+          client_id: project.client_id,
+          client_name: clientMap[project.client_id] || 'Unknown',
+          project_status: project.status || 'Unknown',
+          is_overdue: derivedIsOverdue,
+          source: 'retainer-project'
+        });
+      });
+
+      enriched.sort((a, b) => new Date(a.due_date || 0) - new Date(b.due_date || 0));
 
       setPayments(enriched);
       setProjects(prData || []);
@@ -206,7 +284,7 @@ const Payments = () => {
           due_date: form.due_date || null, 
           is_paid: form.is_paid, 
           payment_type: form.payment_type || 'One-time',
-          payment_date: form.is_paid ? (form.payment_date || new Date().toISOString()) : null 
+          payment_date: form.is_paid ? (form.payment_date || new Date().toISOString().split('T')[0]) : null 
         };
         const res = await supabase.from('payments').update(payload).eq('id', form.id);
         if (res.error) throw res.error;
@@ -222,6 +300,7 @@ const Payments = () => {
         }
 
         const paymentsToInsert = [];
+        const isRecurring = ['Monthly', 'Weekly', '6 Months', 'Yearly'].includes(form.payment_type);
 
         if (paidNow > 0) {
           paymentsToInsert.push({
@@ -230,16 +309,28 @@ const Payments = () => {
             payment_type: form.payment_type || 'One-time',
             due_date: new Date().toISOString().split('T')[0],
             is_paid: true,
-            payment_date: new Date().toISOString()
+            payment_date: form.payment_date || new Date().toISOString().split('T')[0]
           });
         }
 
         if (remaining > 0 || paidNow === 0) {
+          // Partial payment or zero paid — create unpaid record for remaining balance
           paymentsToInsert.push({
             project_id: form.project_id,
             amount: remaining > 0 ? remaining : total,
             payment_type: form.payment_type || 'One-time',
             due_date: form.payment_due_date || null,
+            is_paid: false,
+            payment_date: null
+          });
+        } else if (isRecurring && paidNow > 0 && form.payment_due_date) {
+          // Full payment made for a recurring contract + due date is set
+          // → Create next-cycle unpaid record so overdue tracking works correctly
+          paymentsToInsert.push({
+            project_id: form.project_id,
+            amount: paidNow,
+            payment_type: form.payment_type || 'One-time',
+            due_date: form.payment_due_date,
             is_paid: false,
             payment_date: null
           });
@@ -249,16 +340,64 @@ const Payments = () => {
         if (error) throw error;
       }
 
-      setShowModal(false); fetchData();
+      setShowModal(false); fetchData(true); // skipRecurring=true: manual save already handles this
     } catch (e) { setFormErr(e.message); } finally { setSaving(false); }
   };
 
   const markAsPaid = async (p, e) => {
     e.stopPropagation();
     try {
-      await supabase.from('payments').update({ is_paid: true, payment_date: new Date().toISOString() }).eq('id', p.id);
-      fetchData();
-    } catch (err) { console.error(err); }
+      // Mark current payment as paid (critical operation)
+      const { error: updateErr } = await supabase
+        .from('payments')
+        .update({ is_paid: true, payment_date: new Date().toISOString() })
+        .eq('id', p.id);
+      if (updateErr) throw updateErr;
+
+      // For recurring payments: auto-generate next cycle's unpaid record
+      // Wrapped separately so a failure here doesn't undo the paid marking
+      const recurringTypes = ['Monthly', 'Quarterly', 'Yearly', 'Weekly'];
+      if (recurringTypes.includes(p.payment_type) && p.due_date) {
+        try {
+          const nextDue = new Date(p.due_date);
+          if (p.payment_type === 'Monthly')        nextDue.setMonth(nextDue.getMonth() + 1);
+          else if (p.payment_type === 'Weekly')    nextDue.setDate(nextDue.getDate() + 7);
+          else if (p.payment_type === 'Quarterly') nextDue.setMonth(nextDue.getMonth() + 3);
+          else if (p.payment_type === 'Yearly')    nextDue.setFullYear(nextDue.getFullYear() + 1);
+
+          const nextDueStr = nextDue.toISOString().split('T')[0];
+
+          // Only create if no unpaid record already exists for this project in the same month
+          // (month-range check prevents duplicates from concurrent inserts or manual entries)
+          const monthStart = nextDueStr.slice(0, 7) + '-01';
+          const monthEnd   = nextDueStr.slice(0, 7) + '-31';
+          const { data: existing } = await supabase
+            .from('payments')
+            .select('id')
+            .eq('project_id', p.project_id)
+            .eq('is_paid', false)
+            .not('is_cancelled', 'is', true)   // don't let a cancelled row block next-cycle creation
+            .gte('due_date', monthStart)
+            .lte('due_date', monthEnd);
+
+          if (!existing || existing.length === 0) {
+            const { error: nextErr } = await supabase.from('payments').insert([{
+              project_id: p.project_id,
+              amount: p.amount,
+              payment_type: p.payment_type,
+              due_date: nextDueStr,
+              is_paid: false,
+              payment_date: null
+            }]);
+            if (nextErr) console.warn('Next-cycle insert warning:', nextErr.message);
+          }
+        } catch (cycleErr) {
+          console.warn('Next-cycle auto-create failed (payment still marked paid):', cycleErr.message);
+        }
+      }
+
+      fetchData(true); // skipRecurring=true: markAsPaid already handles next-cycle insert
+    } catch (err) { console.error('markAsPaid error:', err); }
   };
 
   const handleCancelPayment = async (e) => {
@@ -271,7 +410,8 @@ const Payments = () => {
       if (error) throw error;
       
       setShowModal(false);
-      fetchData();
+      // Run ensureRecurring after cancel so the voided row's month gets a fresh auto-row
+      fetchData(false);
     } catch (err) {
       setFormErr(err.message);
     } finally {
@@ -280,7 +420,18 @@ const Payments = () => {
   };
 
   const openAdd = () => { setForm(EMPTY_FORM); setFormErr(null); setShowModal(true); };
-  const openEdit = (p) => { setForm(p); setFormErr(null); setShowModal(true); };
+  const openEdit = (p) => {
+    // 'retainer-project' rows are UI-only virtual rows — no real DB record exists yet.
+    // Editing them would silently fail (no matching DB id). Open a fresh "Log Payment"
+    // form pre-filled for this project instead.
+    if (p.source === 'retainer-project') {
+      setForm({ ...EMPTY_FORM, project_id: p.project_id, client_id: p.client_id, payment_type: 'Monthly', payment_total: String(p.amount || '') });
+      setFormErr(null);
+      setShowModal(true);
+      return;
+    }
+    setForm(p); setFormErr(null); setShowModal(true);
+  };
 
   return (
     <div className="animate-in" style={{ paddingBottom: 40 }}>
@@ -390,7 +541,7 @@ const Payments = () => {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <Calendar size={13} style={{ color: 'var(--text-muted)' }} />
                         <span style={{ fontSize: 12.5, fontWeight: 500, color: p.is_overdue ? 'var(--rose)' : 'var(--text-secondary)' }}>
-                          {p.due_date ? new Date(p.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                          {p.due_date ? new Date(p.due_date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
                         </span>
                       </div>
                     </td>
