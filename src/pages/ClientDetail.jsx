@@ -43,6 +43,7 @@ const ClientDetail = () => {
   const [chargeDesc, setChargeDesc] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [selectedProjectId, setSelectedProjectId] = useState('');
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState('');
   const [charging, setCharging] = useState(false);
   const [chargeResult, setChargeResult] = useState(null); // { success, message }
   const [selectedCardId, setSelectedCardId] = useState('');
@@ -116,41 +117,59 @@ const ClientDetail = () => {
       }
       if (!res?.success) throw new Error(res?.error || 'Charge failed.');
       setChargeResult({ success: true, message: `✅ $${amountDollars.toFixed(2)} charged successfully!` });
-      // Log payment in our DB against selected project (if chosen)
-      if (chargeProjectId) {
-        // Check for existing pending/overdue payment for this project
-        const { data: existingPayments } = await supabase
-          .from('payments')
-          .select('*')
-          .eq('project_id', chargeProjectId)
-          .eq('is_paid', false)
-          .order('due_date', { ascending: true });
+      // Log payment in our DB against selected project/invoice
+      if (selectedInvoiceId) {
+        const paymentToUpdate = data.payments.find(p => p.id === selectedInvoiceId);
+        if (paymentToUpdate) {
+          const originalAmount = parseFloat(paymentToUpdate.amount || 0);
           
-        if (existingPayments && existingPayments.length > 0) {
-          // Find an exact amount match first, otherwise fallback to the oldest pending payment
-          let paymentToUpdate = existingPayments.find(p => Math.abs(parseFloat(p.amount || 0) - amountDollars) < 0.01) || existingPayments[0];
-          
-          await supabase.from('payments').update({
-            is_paid: true,
-            payment_date: new Date().toISOString(),
-            amount: amountDollars // Ensure amount reflects actual charge
-          }).eq('id', paymentToUpdate.id);
-        } else {
-          // No pending payments found, insert a new one
-          await supabase.from('payments').insert({
-            project_id: chargeProjectId,
-            amount: amountDollars,
-            payment_type: 'One-time',
-            due_date: new Date().toISOString().split('T')[0],
-            is_paid: true,
-            payment_date: new Date().toISOString(),
-          });
+          if (amountDollars < originalAmount) {
+            // Partial Payment Logic
+            // 1. Update original row to reflect the amount actually paid today
+            await supabase.from('payments').update({
+              is_paid: true,
+              payment_date: new Date().toISOString(),
+              amount: amountDollars
+            }).eq('id', paymentToUpdate.id);
+            
+            // 2. Insert new row for the remaining balance with the SAME due date
+            await supabase.from('payments').insert({
+              project_id: paymentToUpdate.project_id,
+              amount: originalAmount - amountDollars,
+              payment_type: paymentToUpdate.payment_type,
+              due_date: paymentToUpdate.due_date,
+              is_paid: false,
+              payment_date: null,
+            });
+          } else {
+            // Full (or exact) payment
+            await supabase.from('payments').update({
+              is_paid: true,
+              payment_date: new Date().toISOString(),
+              amount: amountDollars // in case they overpaid slightly
+            }).eq('id', paymentToUpdate.id);
+          }
         }
+      } else if (chargeProjectId) {
+        // Fallback for custom one-time charge not linked to existing invoice
+        await supabase.from('payments').insert({
+          project_id: chargeProjectId,
+          amount: amountDollars,
+          payment_type: 'One-time',
+          due_date: new Date().toISOString().split('T')[0],
+          is_paid: true,
+          payment_date: new Date().toISOString(),
+        });
       }
+      
+      // Refresh data so the new pending invoice shows up in the table
+      await fetchClientData();
+
       setChargeAmount('');
       setChargeDesc('');
       setAdminPassword('');
       setSelectedProjectId('');
+      setSelectedInvoiceId('');
     } catch (err) {
       setChargeResult({ success: false, message: `❌ ${err.message || 'Charge failed. Please try again.'}` });
     } finally {
@@ -832,35 +851,72 @@ const ClientDetail = () => {
                     </div>
                   )}
 
-                  {/* Project selector for payment logging */}
+                  {/* Invoice selector */}
                   <div>
                     <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      Log Against Project
+                      Select Pending Invoice (Optional)
                     </label>
-                    {data.projects.length === 0 ? (
-                      <div style={{ fontSize: 12, color: 'var(--amber)', padding: '8px 12px', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 8 }}>
-                        ⚠ No projects found — charge will process but won't be logged in payments.
-                      </div>
-                    ) : (
-                      <select
-                        className="input"
-                        value={selectedProjectId}
-                        onChange={e => setSelectedProjectId(e.target.value)}
-                      >
-                        {data.projects.length === 1
-                          ? <option value={data.projects[0].id}>{data.projects[0].title}</option>
-                          : (
-                            <>
-                              <option value="">Select project to log payment...</option>
-                              {data.projects.map(p => (
-                                <option key={p.id} value={p.id}>{p.title}</option>
-                              ))}
-                            </>
-                          )
+                    <select
+                      className="input"
+                      value={selectedInvoiceId}
+                      onChange={e => {
+                        const invId = e.target.value;
+                        setSelectedInvoiceId(invId);
+                        if (invId) {
+                          const inv = data.payments.find(p => p.id === invId);
+                          if (inv) {
+                            setChargeAmount(inv.amount || '');
+                            setSelectedProjectId(inv.project_id || '');
+                            const proj = data.projects.find(p => p.id === inv.project_id);
+                            setChargeDesc(`Payment for ${proj?.title || 'Invoice'}`);
+                          }
                         }
-                      </select>
-                    )}
+                      }}
+                    >
+                      <option value="">-- No specific invoice (Custom Charge) --</option>
+                      {data.payments.filter(p => !p.is_paid && !p.is_cancelled).sort((a,b) => new Date(a.due_date||0) - new Date(b.due_date||0)).map(inv => {
+                        const proj = data.projects.find(p => p.id === inv.project_id);
+                        const dueStr = inv.due_date ? new Date(inv.due_date + 'T12:00:00').toLocaleDateString() : 'N/A';
+                        return (
+                          <option key={inv.id} value={inv.id}>
+                            {proj?.title} — ${inv.amount} (Due: {dueStr})
+                          </option>
+                        );
+                      })}
+                    </select>
                   </div>
+
+                  {/* Project selector for payment logging */}
+                  {!selectedInvoiceId && (
+                    <div>
+                      <label className="label" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        Log Against Project
+                      </label>
+                      {data.projects.length === 0 ? (
+                        <div style={{ fontSize: 12, color: 'var(--amber)', padding: '8px 12px', background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 8 }}>
+                          ⚠ No projects found — charge will process but won't be logged in payments.
+                        </div>
+                      ) : (
+                        <select
+                          className="input"
+                          value={selectedProjectId}
+                          onChange={e => setSelectedProjectId(e.target.value)}
+                        >
+                          {data.projects.length === 1
+                            ? <option value={data.projects[0].id}>{data.projects[0].title}</option>
+                            : (
+                              <>
+                                <option value="">Select project to log payment...</option>
+                                {data.projects.map(p => (
+                                  <option key={p.id} value={p.id}>{p.title}</option>
+                                ))}
+                              </>
+                            )
+                          }
+                        </select>
+                      )}
+                    </div>
+                  )}
 
                   <div>
                     <label className="label">Amount ($) *</label>

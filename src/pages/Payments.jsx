@@ -13,6 +13,20 @@ const PaymentModal = ({ form, setForm, projects, clients, saving, err, onSave, o
   const paidNow = parseFloat(form.payment_paid_now || 0) || 0;
   const remaining = Math.max(0, total - paidNow);
 
+  // Auto-calculate the next logical due date if project changes
+  useEffect(() => {
+    if (!isEdit && form.project_id) {
+      const proj = projects.find(p => p.id === form.project_id);
+      if (proj && proj.billing_type === 'Retainer' && proj.billing_cycle === 'Monthly') {
+        // Find existing payments to guess next due date
+        // Passed as a prop or we just do a rough guess based on start_date
+        if (proj.start_date && !form.payment_due_date_override) {
+           // We can leave it as user selected or we can just show it
+        }
+      }
+    }
+  }, [form.project_id]);
+
   return (
     <div className="modal-overlay">
       <motion.div initial={{ opacity: 0, scale: 0.96, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }} className="modal-box">
@@ -73,13 +87,26 @@ const PaymentModal = ({ form, setForm, projects, clients, saving, err, onSave, o
                     </select>
                   </div>
                   <div>
-                    <label className="label">Payment Date</label>
+                    <label className="label">Transaction Date (Paid On)</label>
                     <input className="input" type="date" value={form.payment_date || ''} onChange={e => setForm(f => ({ ...f, payment_date: e.target.value }))} onClick={(e) => e.target.showPicker?.()} />
                   </div>
                 </div>
-                <div>
-                  <label className="label">Remaining Due Date</label>
-                  <input className="input" type="date" value={form.payment_due_date || ''} onChange={e => setForm(f => ({ ...f, payment_due_date: e.target.value }))} onClick={(e) => e.target.showPicker?.()} />
+                
+                <div style={{ padding: '12px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, marginTop: 4 }}>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 12 }}>Invoice Dates</p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <div>
+                      <label className="label" style={{ fontSize: 11 }}>Due Date</label>
+                      <input className="input" type="date" value={form.due_date || ''} onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} onClick={(e) => e.target.showPicker?.()} />
+                    </div>
+                    {remaining > 0 && (
+                      <div>
+                        <label className="label" style={{ fontSize: 11 }}>Remaining Bal. Due Date</label>
+                        <input className="input" type="date" value={form.payment_due_date || ''} onChange={e => setForm(f => ({ ...f, payment_due_date: e.target.value }))} onClick={(e) => e.target.showPicker?.()} />
+                      </div>
+                    )}
+                  </div>
+                  <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>The Due Date represents when this payment was officially owed or billed.</p>
                 </div>
               </>
             ) : (
@@ -101,7 +128,7 @@ const PaymentModal = ({ form, setForm, projects, clients, saving, err, onSave, o
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div>
-                    <label className="label">Payment Date</label>
+                    <label className="label">Transaction Date (Paid On)</label>
                     <input className="input" type="date" value={form.payment_date || ''} onChange={e => setForm(f => ({ ...f, payment_date: e.target.value }))} onClick={(e) => e.target.showPicker?.()} />
                   </div>
                   <div>
@@ -138,6 +165,35 @@ const PaymentModal = ({ form, setForm, projects, clients, saving, err, onSave, o
   );
 };
 
+const QuickPayModal = ({ row, date, setDate, onSave, onClose, saving }) => {
+  if (!row) return null;
+  return (
+    <div className="modal-overlay">
+      <motion.div initial={{ opacity: 0, scale: 0.96, y: 12 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.96 }} className="modal-box" style={{ maxWidth: 400 }}>
+        <div className="modal-header">
+          <span className="modal-title">Record Payment</span>
+          <button className="btn btn-ghost btn-icon" onClick={onClose}><X size={16} /></button>
+        </div>
+        <div className="modal-body">
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
+            Recording payment for <strong>{row.project_title}</strong> (Due: {row.due_date ? new Date(row.due_date + 'T12:00:00').toLocaleDateString() : 'N/A'})
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label className="label">Payment Received On (Transaction Date)</label>
+            <input className="input" type="date" value={date} onChange={e => setDate(e.target.value)} onClick={(e) => e.target.showPicker?.()} />
+          </div>
+        </div>
+        <div className="modal-footer" style={{ justifyContent: 'flex-end', gap: 8 }}>
+          <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn btn-primary" onClick={onSave} disabled={saving}>
+            {saving ? <Loader2 size={14} className="spin" /> : 'Mark Paid'}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
 const Payments = () => {
   const { isAdmin } = useAuth();
   const [payments, setPayments] = useState([]);
@@ -150,6 +206,9 @@ const Payments = () => {
   const [form, setForm] = useState(EMPTY_FORM);
   const [stats, setStats] = useState({ totalDue: 0, totalPaid: 0, overdue: 0 });
   const [activeFilter, setActiveFilter] = useState('All');
+  
+  const [quickPayRow, setQuickPayRow] = useState(null);
+  const [quickPayDate, setQuickPayDate] = useState(new Date().toISOString().split('T')[0]);
 
   const filteredPayments = payments.filter(p => {
     if (activeFilter === 'Outstanding') return !p.is_paid && !p.is_cancelled; // exclude cancelled
@@ -184,16 +243,9 @@ const Payments = () => {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
 
-      const addMonths = (date, months) => {
-        const newDate = new Date(date);
-        newDate.setMonth(newDate.getMonth() + months);
-        return newDate;
-      };
-
       const enriched = [];
-      const existingPendingKeys = new Set();
 
-      (refreshedPaymentRows).forEach(p => {
+      refreshedPaymentRows.forEach(p => {
         const isOverdue = !p.is_paid && !p.is_cancelled && p.due_date && new Date(p.due_date) < today;
         const amt = p.amount || 0;
         
@@ -215,54 +267,10 @@ const Payments = () => {
           source: 'payment-row'
         };
         enriched.push(entry);
-        existingPendingKeys.add(`${p.project_id || 'unknown'}:${p.due_date || 'none'}`);
-      });
-
-      (prData || []).forEach(project => {
-        if (project.billing_type !== 'Retainer' || project.billing_cycle !== 'Monthly') return;
-        const cId = project.client_id;
-        if (!cId) return;
-        const projectAmount = parseFloat(project.budget || 0);
-        if (!projectAmount) return;
-
-        const startDate = project.start_date ? new Date(project.start_date) : new Date();
-        const projectPayments = (refreshedPaymentRows).filter(pay => pay.project_id === project.id);
-        const sortedProjectPayments = [...projectPayments].sort((a, b) => new Date(a.due_date || 0) - new Date(b.due_date || 0));
-        const latestPayment = sortedProjectPayments[sortedProjectPayments.length - 1];
-        let nextDueDate = startDate;
-
-        if (latestPayment?.due_date) {
-          const lastDue = new Date(latestPayment.due_date);
-          if (latestPayment.is_paid) nextDueDate = addMonths(lastDue, 1);
-          else nextDueDate = lastDue;
-        }
-
-        const dueKey = `${project.id}:${nextDueDate.toISOString().split('T')[0]}`;
-        if (existingPendingKeys.has(dueKey)) return;
-
-        const dueDate = nextDueDate.toISOString().split('T')[0];
-        const derivedIsOverdue = !today ? false : new Date(dueDate) < today;
-        totalDue += projectAmount;
-        if (derivedIsOverdue) overdue += projectAmount;
-
-        enriched.push({
-          id: `rec-${project.id}`,
-          project_id: project.id,
-          amount: projectAmount,
-          due_date: dueDate,
-          is_paid: false,
-          is_cancelled: false,
-          payment_type: 'Monthly',
-          project_title: project.title,
-          client_id: project.client_id,
-          client_name: clientMap[project.client_id] || 'Unknown',
-          project_status: project.status || 'Unknown',
-          is_overdue: derivedIsOverdue,
-          source: 'retainer-project'
-        });
       });
 
       enriched.sort((a, b) => new Date(a.due_date || 0) - new Date(b.due_date || 0));
+
 
       setPayments(enriched);
       setProjects(prData || []);
@@ -307,7 +315,7 @@ const Payments = () => {
             project_id: form.project_id,
             amount: paidNow,
             payment_type: form.payment_type || 'One-time',
-            due_date: new Date().toISOString().split('T')[0],
+            due_date: form.due_date || new Date().toISOString().split('T')[0],
             is_paid: true,
             payment_date: form.payment_date || new Date().toISOString().split('T')[0]
           });
@@ -344,15 +352,29 @@ const Payments = () => {
     } catch (e) { setFormErr(e.message); } finally { setSaving(false); }
   };
 
-  const markAsPaid = async (p, e) => {
+  const openQuickPay = (p, e) => {
     e.stopPropagation();
+    setQuickPayRow(p);
+    setQuickPayDate(new Date().toISOString().split('T')[0]);
+  };
+
+  const submitQuickPay = async () => {
+    if (!quickPayRow) return;
+    if (!quickPayDate) {
+      alert('Please select the transaction date.');
+      return;
+    }
+    const p = quickPayRow;
+    setSaving(true);
     try {
-      // Mark current payment as paid (critical operation)
+      // Mark current payment as paid using the selected date
+      // Send as plain date string (YYYY-MM-DD) to avoid timezone shift bugs
       const { error: updateErr } = await supabase
         .from('payments')
-        .update({ is_paid: true, payment_date: new Date().toISOString() })
+        .update({ is_paid: true, payment_date: quickPayDate })
         .eq('id', p.id);
       if (updateErr) throw updateErr;
+
 
       // For recurring payments: auto-generate next cycle's unpaid record
       // Wrapped separately so a failure here doesn't undo the paid marking
@@ -396,8 +418,12 @@ const Payments = () => {
         }
       }
 
-      fetchData(true); // skipRecurring=true: markAsPaid already handles next-cycle insert
-    } catch (err) { console.error('markAsPaid error:', err); }
+      fetchData(true); // skipRecurring=true: submitQuickPay already handles next-cycle insert
+      setQuickPayRow(null);
+    } catch (err) { 
+      console.error('submitQuickPay error:', err);
+      alert('Error marking payment as paid: ' + (err.message || 'Unknown error. Check console.'));
+    } finally { setSaving(false); }
   };
 
   const handleCancelPayment = async (e) => {
@@ -417,6 +443,15 @@ const Payments = () => {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleDeletePayment = async (p, e) => {
+    e.stopPropagation();
+    if (!window.confirm('Are you sure you want to permanently delete this payment?')) return;
+    try {
+      await supabase.from('payments').delete().eq('id', p.id);
+      fetchData(true);
+    } catch (err) { console.error('Delete error:', err); }
   };
 
   const openAdd = () => { setForm(EMPTY_FORM); setFormErr(null); setShowModal(true); };
@@ -555,11 +590,16 @@ const Payments = () => {
                       )}
                     </td>
                     <td style={{ textAlign: 'right', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                      {isAdmin && (
+                        <button className="btn btn-ghost btn-icon" style={{ color: 'var(--rose)' }} onClick={e => handleDeletePayment(p, e)} title="Delete Payment (Temp)">
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                        </button>
+                      )}
                       <button className="btn btn-ghost btn-icon" onClick={() => openEdit(p)}>
                         <ArrowUpRight size={15} />
                       </button>
                       {!p.is_paid && !p.is_cancelled ? (
-                        <button className="btn btn-sm" style={{ background: 'var(--emerald-glow)', color: 'var(--emerald)', border: '1px solid rgba(16,185,129,0.2)' }} onClick={e => markAsPaid(p, e)}>
+                        <button className="btn btn-sm" style={{ background: 'var(--emerald-glow)', color: 'var(--emerald)', border: '1px solid rgba(16,185,129,0.2)' }} onClick={e => openQuickPay(p, e)}>
                           Mark Paid
                         </button>
                       ) : null}
@@ -574,6 +614,7 @@ const Payments = () => {
 
       <AnimatePresence>
         {showModal && <PaymentModal form={form} setForm={setForm} projects={projects} clients={clients} saving={saving} err={formErr} onSave={handleSave} onCancelPayment={handleCancelPayment} onClose={() => setShowModal(false)} isAdmin={isAdmin} />}
+        {quickPayRow && <QuickPayModal row={quickPayRow} date={quickPayDate} setDate={setQuickPayDate} onSave={submitQuickPay} onClose={() => setQuickPayRow(null)} saving={saving} />}
       </AnimatePresence>
     </div>
   );

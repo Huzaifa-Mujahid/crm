@@ -293,7 +293,7 @@ const Projects = () => {
           parseFloat(formData.budget) > 0
         ) {
           try {
-            const nextDue = calcNextDueDate(formData.start_date, formData.billing_cycle);
+            const nextDue = formData.start_date;
             const { error: payErr } = await supabase.from('payments').insert([{
               project_id: newProj.id,
               amount: parseFloat(formData.budget),
