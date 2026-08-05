@@ -5,13 +5,27 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { ensureRecurringPaymentRows } from '../lib/recurringPayments';
 
-const EMPTY_FORM = { client_id: '', project_id: '', amount: '', due_date: '', is_paid: false, payment_total: '', payment_paid_now: '', payment_due_date: '', payment_type: 'One-time', payment_date: new Date().toISOString().split('T')[0] };
+const EMPTY_FORM = { client_id: '', project_id: '', amount: '', due_date: '', is_paid: false, payment_total: '', payment_paid_now: '', payment_type: 'One time', payment_date: new Date().toISOString().split('T')[0], selected_invoice_id: null };
 
-const PaymentModal = ({ form, setForm, projects, clients, saving, err, onSave, onCancelPayment, onClose, isAdmin }) => {
+const PaymentModal = ({ form, setForm, projects, clients, payments, saving, err, onSave, onCancelPayment, onClose, isAdmin }) => {
   const isEdit = !!form.id;
   const total = parseFloat(form.payment_total || 0) || 0;
   const paidNow = parseFloat(form.payment_paid_now || 0) || 0;
   const remaining = Math.max(0, total - paidNow);
+
+  const pendingInvoices = (payments || []).filter(p => p.project_id === form.project_id && !p.is_paid && !p.is_cancelled);
+
+  const handleSelectPending = (e) => {
+    const pId = e.target.value;
+    if (!pId) {
+      setForm(f => ({ ...f, selected_invoice_id: null, payment_total: '', due_date: '', payment_type: 'One time' }));
+      return;
+    }
+    const inv = pendingInvoices.find(p => p.id === pId);
+    if (inv) {
+      setForm(f => ({ ...f, selected_invoice_id: inv.id, payment_total: String(inv.amount || ''), due_date: inv.due_date || '', payment_type: inv.payment_type || 'One time' }));
+    }
+  };
 
   // Auto-calculate the next logical due date if project changes
   useEffect(() => {
@@ -56,6 +70,20 @@ const PaymentModal = ({ form, setForm, projects, clients, saving, err, onSave, o
 
             {!isEdit ? (
               <>
+                {form.project_id && pendingInvoices.length > 0 && (
+                  <div>
+                    <label className="label" style={{ color: 'var(--amber)' }}>Select Pending Invoice (Optional)</label>
+                    <select className="input" style={{ borderColor: 'rgba(245,158,11,0.3)', background: 'rgba(245,158,11,0.02)' }} value={form.selected_invoice_id || ''} onChange={handleSelectPending}>
+                      <option value="">-- Create New Payment --</option>
+                      {pendingInvoices.map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.due_date ? new Date(p.due_date + 'T12:00:00').toLocaleDateString() : 'No Date'} - ${p.amount} ({p.payment_type})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div>
                     <label className="label">Total Amount ($) *</label>
@@ -94,17 +122,11 @@ const PaymentModal = ({ form, setForm, projects, clients, saving, err, onSave, o
                 
                 <div style={{ padding: '12px', background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 8, marginTop: 4 }}>
                   <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 12 }}>Invoice Dates</p>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
                     <div>
                       <label className="label" style={{ fontSize: 11 }}>Due Date</label>
                       <input className="input" type="date" value={form.due_date || ''} onChange={e => setForm(f => ({ ...f, due_date: e.target.value }))} onClick={(e) => e.target.showPicker?.()} />
                     </div>
-                    {remaining > 0 && (
-                      <div>
-                        <label className="label" style={{ fontSize: 11 }}>Remaining Bal. Due Date</label>
-                        <input className="input" type="date" value={form.payment_due_date || ''} onChange={e => setForm(f => ({ ...f, payment_due_date: e.target.value }))} onClick={(e) => e.target.showPicker?.()} />
-                      </div>
-                    )}
                   </div>
                   <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>The Due Date represents when this payment was officially owed or billed.</p>
                 </div>
@@ -286,16 +308,52 @@ const Payments = () => {
     setSaving(true); setFormErr(null);
     try {
       if (form.id) {
+        const wasPaid = payments.find(pay => pay.id === form.id)?.is_paid || false;
+        const isNowPaid = !!form.is_paid;
+        const justMarkedPaid = !wasPaid && isNowPaid;
+
         const payload = { 
           project_id: form.project_id, 
           amount: parseFloat(form.amount) || 0, 
           due_date: form.due_date || null, 
-          is_paid: form.is_paid, 
+          is_paid: isNowPaid, 
           payment_type: form.payment_type || 'One-time',
-          payment_date: form.is_paid ? (form.payment_date || new Date().toISOString().split('T')[0]) : null 
+          payment_date: isNowPaid ? (form.payment_date || new Date().toISOString().split('T')[0]) : null 
         };
         const res = await supabase.from('payments').update(payload).eq('id', form.id);
         if (res.error) throw res.error;
+
+        // Stripe-style: if we just toggled this invoice to paid and it's Monthly recurring,
+        // immediately schedule the next month's invoice.
+        if (justMarkedPaid && (form.payment_type === 'Monthly')) {
+          const project = projects.find(pr => pr.id === form.project_id);
+          if (project && project.billing_type === 'Retainer' && project.billing_cycle === 'Monthly') {
+            const thisDue = new Date((form.due_date || payload.payment_date) + 'T12:00:00');
+            const nextDue = new Date(thisDue);
+            nextDue.setMonth(nextDue.getMonth() + 1);
+            if (project.start_date) {
+              const startDay = new Date(project.start_date + 'T12:00:00').getDate();
+              nextDue.setDate(startDay);
+            }
+            const nextDueStr = nextDue.toISOString().split('T')[0];
+            const monthPrefix = nextDueStr.slice(0, 7);
+            const { data: existing } = await supabase
+              .from('payments').select('id')
+              .eq('project_id', form.project_id).eq('is_paid', false)
+              .not('is_cancelled', 'is', true)
+              .gte('due_date', monthPrefix + '-01').lte('due_date', monthPrefix + '-31').limit(1);
+            if (!existing || existing.length === 0) {
+              await supabase.from('payments').insert([{
+                project_id: form.project_id,
+                amount: parseFloat(project.budget || form.amount || 0),
+                payment_type: 'Monthly',
+                due_date: nextDueStr,
+                is_paid: false,
+                payment_date: null,
+              }]);
+            }
+          }
+        }
       } else {
         const total = parseFloat(form.payment_total) || 0;
         const paidNow = parseFloat(form.payment_paid_now) || 0;
@@ -307,48 +365,65 @@ const Payments = () => {
           return;
         }
 
-        const paymentsToInsert = [];
-        const isRecurring = ['Monthly', 'Weekly', '6 Months', 'Yearly'].includes(form.payment_type);
+        if (form.selected_invoice_id) {
+          // Process payment against an existing pending invoice
+          if (paidNow > 0) {
+            // Update the selected pending invoice with the paid amount and date
+            const { error: updErr } = await supabase.from('payments').update({
+              is_paid: true,
+              amount: paidNow,
+              payment_date: form.payment_date || new Date().toISOString().split('T')[0]
+            }).eq('id', form.selected_invoice_id);
+            if (updErr) throw updErr;
+          }
 
-        if (paidNow > 0) {
-          paymentsToInsert.push({
-            project_id: form.project_id,
-            amount: paidNow,
-            payment_type: form.payment_type || 'One-time',
-            due_date: form.due_date || new Date().toISOString().split('T')[0],
-            is_paid: true,
-            payment_date: form.payment_date || new Date().toISOString().split('T')[0]
-          });
+          if (remaining > 0) {
+            // If partial payment, create a new pending invoice for the remainder carrying the original due date
+            const { error: insErr } = await supabase.from('payments').insert([{
+              project_id: form.project_id,
+              amount: remaining,
+              payment_type: form.payment_type || 'One time',
+              due_date: form.due_date || null,
+              is_paid: false,
+              payment_date: null
+            }]);
+            if (insErr) throw insErr;
+          }
+        } else {
+          // Normal flow: Insert entirely new rows
+          const paymentsToInsert = [];
+          const isRecurring = ['Monthly', 'Weekly', '6 Months', 'Yearly'].includes(form.payment_type);
+
+          if (paidNow > 0) {
+            paymentsToInsert.push({
+              project_id: form.project_id,
+              amount: paidNow,
+              payment_type: form.payment_type || 'One time',
+              due_date: form.due_date || new Date().toISOString().split('T')[0],
+              is_paid: true,
+              payment_date: form.payment_date || new Date().toISOString().split('T')[0]
+            });
+          }
+
+          if (remaining > 0 || paidNow === 0) {
+            // Partial payment or zero paid — create unpaid record for remaining balance
+            paymentsToInsert.push({
+              project_id: form.project_id,
+              amount: remaining > 0 ? remaining : total,
+              payment_type: form.payment_type || 'One time',
+              due_date: form.due_date || null,
+              is_paid: false,
+              payment_date: null
+            });
+          }
+
+          const { error } = await supabase.from('payments').insert(paymentsToInsert);
+          if (error) throw error;
         }
-
-        if (remaining > 0 || paidNow === 0) {
-          // Partial payment or zero paid — create unpaid record for remaining balance
-          paymentsToInsert.push({
-            project_id: form.project_id,
-            amount: remaining > 0 ? remaining : total,
-            payment_type: form.payment_type || 'One-time',
-            due_date: form.payment_due_date || null,
-            is_paid: false,
-            payment_date: null
-          });
-        } else if (isRecurring && paidNow > 0 && form.payment_due_date) {
-          // Full payment made for a recurring contract + due date is set
-          // → Create next-cycle unpaid record so overdue tracking works correctly
-          paymentsToInsert.push({
-            project_id: form.project_id,
-            amount: paidNow,
-            payment_type: form.payment_type || 'One-time',
-            due_date: form.payment_due_date,
-            is_paid: false,
-            payment_date: null
-          });
-        }
-
-        const { error } = await supabase.from('payments').insert(paymentsToInsert);
-        if (error) throw error;
       }
 
-      setShowModal(false); fetchData(true); // skipRecurring=true: manual save already handles this
+      setShowModal(false); fetchData(true); // skipRecurring=true — next invoice handled explicitly above
+
     } catch (e) { setFormErr(e.message); } finally { setSaving(false); }
   };
 
@@ -367,58 +442,56 @@ const Payments = () => {
     const p = quickPayRow;
     setSaving(true);
     try {
-      // Mark current payment as paid using the selected date
-      // Send as plain date string (YYYY-MM-DD) to avoid timezone shift bugs
+      // Step 1: Mark current payment as paid
       const { error: updateErr } = await supabase
         .from('payments')
         .update({ is_paid: true, payment_date: quickPayDate })
         .eq('id', p.id);
       if (updateErr) throw updateErr;
 
-
-      // For recurring payments: auto-generate next cycle's unpaid record
-      // Wrapped separately so a failure here doesn't undo the paid marking
-      const recurringTypes = ['Monthly', 'Quarterly', 'Yearly', 'Weekly'];
-      if (recurringTypes.includes(p.payment_type) && p.due_date) {
-        try {
-          const nextDue = new Date(p.due_date);
-          if (p.payment_type === 'Monthly')        nextDue.setMonth(nextDue.getMonth() + 1);
-          else if (p.payment_type === 'Weekly')    nextDue.setDate(nextDue.getDate() + 7);
-          else if (p.payment_type === 'Quarterly') nextDue.setMonth(nextDue.getMonth() + 3);
-          else if (p.payment_type === 'Yearly')    nextDue.setFullYear(nextDue.getFullYear() + 1);
-
+      // Step 2 (Stripe-style): If this is a Monthly recurring invoice,
+      // immediately create the next month's invoice so the client always
+      // has exactly one pending invoice going forward.
+      if (p.payment_type === 'Monthly') {
+        const project = projects.find(pr => pr.id === p.project_id);
+        if (project && project.billing_type === 'Retainer' && project.billing_cycle === 'Monthly') {
+          // Compute next due date: same day-of-month as this invoice, +1 month
+          const thisDue = new Date((p.due_date || quickPayDate) + 'T12:00:00');
+          const nextDue = new Date(thisDue);
+          nextDue.setMonth(nextDue.getMonth() + 1);
+          // Anchor to project start day to avoid drift
+          if (project.start_date) {
+            const startDay = new Date(project.start_date + 'T12:00:00').getDate();
+            nextDue.setDate(startDay);
+          }
           const nextDueStr = nextDue.toISOString().split('T')[0];
 
-          // Only create if no unpaid record already exists for this project in the same month
-          // (month-range check prevents duplicates from concurrent inserts or manual entries)
-          const monthStart = nextDueStr.slice(0, 7) + '-01';
-          const monthEnd   = nextDueStr.slice(0, 7) + '-31';
+          // Check: does an unpaid invoice already exist for that month?
+          const monthPrefix = nextDueStr.slice(0, 7); // e.g. "2026-09"
           const { data: existing } = await supabase
             .from('payments')
             .select('id')
             .eq('project_id', p.project_id)
             .eq('is_paid', false)
-            .not('is_cancelled', 'is', true)   // don't let a cancelled row block next-cycle creation
-            .gte('due_date', monthStart)
-            .lte('due_date', monthEnd);
+            .not('is_cancelled', 'is', true)
+            .gte('due_date', monthPrefix + '-01')
+            .lte('due_date', monthPrefix + '-31')
+            .limit(1);
 
           if (!existing || existing.length === 0) {
-            const { error: nextErr } = await supabase.from('payments').insert([{
+            await supabase.from('payments').insert([{
               project_id: p.project_id,
-              amount: p.amount,
-              payment_type: p.payment_type,
+              amount: parseFloat(project.budget || p.amount || 0),
+              payment_type: 'Monthly',
               due_date: nextDueStr,
               is_paid: false,
-              payment_date: null
+              payment_date: null,
             }]);
-            if (nextErr) console.warn('Next-cycle insert warning:', nextErr.message);
           }
-        } catch (cycleErr) {
-          console.warn('Next-cycle auto-create failed (payment still marked paid):', cycleErr.message);
         }
       }
 
-      fetchData(true); // skipRecurring=true: submitQuickPay already handles next-cycle insert
+      fetchData(true); // skipRecurring=true — we already handled next invoice above
       setQuickPayRow(null);
     } catch (err) { 
       console.error('submitQuickPay error:', err);
@@ -443,15 +516,6 @@ const Payments = () => {
     } finally {
       setSaving(false);
     }
-  };
-
-  const handleDeletePayment = async (p, e) => {
-    e.stopPropagation();
-    if (!window.confirm('Are you sure you want to permanently delete this payment?')) return;
-    try {
-      await supabase.from('payments').delete().eq('id', p.id);
-      fetchData(true);
-    } catch (err) { console.error('Delete error:', err); }
   };
 
   const openAdd = () => { setForm(EMPTY_FORM); setFormErr(null); setShowModal(true); };
@@ -590,11 +654,6 @@ const Payments = () => {
                       )}
                     </td>
                     <td style={{ textAlign: 'right', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                      {isAdmin && (
-                        <button className="btn btn-ghost btn-icon" style={{ color: 'var(--rose)' }} onClick={e => handleDeletePayment(p, e)} title="Delete Payment (Temp)">
-                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
-                        </button>
-                      )}
                       <button className="btn btn-ghost btn-icon" onClick={() => openEdit(p)}>
                         <ArrowUpRight size={15} />
                       </button>
@@ -613,7 +672,8 @@ const Payments = () => {
       </div>
 
       <AnimatePresence>
-        {showModal && <PaymentModal form={form} setForm={setForm} projects={projects} clients={clients} saving={saving} err={formErr} onSave={handleSave} onCancelPayment={handleCancelPayment} onClose={() => setShowModal(false)} isAdmin={isAdmin} />}
+        {showModal && <PaymentModal form={form} setForm={setForm} projects={projects} clients={clients} payments={payments} saving={saving} err={formErr} onSave={handleSave} onCancelPayment={handleCancelPayment} onClose={() => setShowModal(false)} isAdmin={isAdmin} />}
+
         {quickPayRow && <QuickPayModal row={quickPayRow} date={quickPayDate} setDate={setQuickPayDate} onSave={submitQuickPay} onClose={() => setQuickPayRow(null)} saving={saving} />}
       </AnimatePresence>
     </div>

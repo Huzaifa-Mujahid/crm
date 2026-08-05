@@ -33,6 +33,7 @@ export const ensureRecurringPaymentRows = async ({ supabase, projects = [], paym
 
   for (const project of projects) {
     if (project.billing_type !== 'Retainer' || project.billing_cycle !== 'Monthly') continue;
+    if (project.status === 'Cancelled' || project.status === 'Completed') continue;
 
     const amount = parseFloat(project.budget || 0);
     if (!amount || !project.client_id) continue;
@@ -46,8 +47,9 @@ export const ensureRecurringPaymentRows = async ({ supabase, projects = [], paym
     while (keepGenerating) {
       const nextDueDate = getNextRecurringDueDate(project, projectPayments);
       
-      // Stop generating if we've caught up to the future, UNLESS it's the very first invoice
-      if (nextDueDate > today && projectPayments.length > 0) {
+      // Stop generating if we've caught up to the future AND there's already at least one unpaid invoice
+      const unpaidCount = projectPayments.filter(p => !p.is_paid && !p.is_cancelled).length;
+      if (nextDueDate > today && unpaidCount >= 1) {
         break;
       }
 
