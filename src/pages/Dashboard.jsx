@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import {
   Users, Briefcase, Clock, DollarSign,
   TrendingUp, Calendar, MessageSquare, ChevronRight,
-  CheckCircle2, FileText,
+  CheckCircle2, FileText, AlertCircle,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
@@ -81,8 +81,11 @@ const Dashboard = () => {
   const [monthlyDueThisMonthData, setMonthlyDueThisMonthData] = useState([]);
   const [allDuePaymentsData, setAllDuePaymentsData] = useState({ total: 0, list: [] });
   const [newClientsMonthData, setNewClientsMonthData] = useState({ count: 0, list: [] });
+  const [newClientsInsightsData, setNewClientsInsightsData] = useState([]);
+  const [newClientsFilter, setNewClientsFilter] = useState('this_month');
   const [monthlyClientChartData, setMonthlyClientChartData] = useState([]);
   const [completedTasks, setCompletedTasks] = useState([]);
+  const [overdueInteractions, setOverdueInteractions] = useState([]);
   const [selectedMonth, setSelectedMonth] = useState('');
   const [duePaymentsFilter, setDuePaymentsFilter] = useState('this_month');
   const navigate = useNavigate();
@@ -111,6 +114,7 @@ const Dashboard = () => {
       let overdueQuery = supabase.from('payments').select('*', { count: 'exact', head: true }).eq('is_paid', false).lt('due_date', nowStr);
       let tasksQuery = supabase.from('tasks').select('*, clients(full_name)').order('due_date', { ascending: true }).limit(5);
       let projStatusQuery = supabase.from('projects').select('status');
+      let interactionsQuery = supabase.from('interactions').select('id, client_id, follow_up_date, clients(full_name, company)').order('follow_up_date', { ascending: true });
 
       // Filtering for staff
       if (isStaff) {
@@ -118,6 +122,7 @@ const Dashboard = () => {
         projectsQuery = supabase.from('projects').select('*', { count: 'exact', head: true }).eq('assigned_to', user.id);
         tasksQuery = tasksQuery.eq('assigned_to', user.id);
         projStatusQuery = projStatusQuery.eq('assigned_to', user.id);
+        interactionsQuery = interactionsQuery.eq('created_by', user.id);
         
         const { data: staffProjIds } = await supabase.from('projects').select('id').eq('assigned_to', user.id);
         const pIds = staffProjIds?.map(p => p.id) || [];
@@ -139,7 +144,7 @@ const Dashboard = () => {
             .limit(8)
         : Promise.resolve({ data: [] });
 
-      const [resC, resP, resRev, resProj, resOver, resTasks, resStaff, resCompleted] = await Promise.all([
+      const [resC, resP, resRev, resProj, resOver, resTasks, resStaff, resCompleted, resInteractions] = await Promise.all([
         clientsQuery,
         projectsQuery,
         paymentsQuery,
@@ -147,7 +152,8 @@ const Dashboard = () => {
         overdueQuery,
         tasksQuery,
         supabase.from('staff_keys').select('user_id, full_name').eq('is_active', true),
-        completedTasksQuery
+        completedTasksQuery,
+        interactionsQuery
       ]);
 
       const c = (isAdmin || isManager) ? (resC?.data?.length || 0) : (resC?.count || 0);
@@ -158,6 +164,7 @@ const Dashboard = () => {
       const taskRows = resTasks?.data || [];
       const staffRows = resStaff?.data || [];
       const completedTaskRows = resCompleted?.data || [];
+      const interactionRows = resInteractions?.data || [];
 
       const revenue = revData.filter(x => x.is_paid).reduce((s, x) => s + (x.amount || 0), 0);
       const counts = { Pending: 0, 'In Progress': 0, Completed: 0, Cancelled: 0 };
@@ -173,6 +180,13 @@ const Dashboard = () => {
       setMyTasks(taskRows);
       setStaffList(staffRows);
       setCompletedTasks(completedTaskRows);
+      setOverdueInteractions((interactionRows || [])
+        .filter(item => item.follow_up_date && new Date(item.follow_up_date) < new Date())
+        .map(item => ({
+          id: item.id,
+          clientName: item.clients?.company || item.clients?.full_name || 'Unknown Client',
+          clientId: item.client_id
+        })));
 
       // Admin/Manager Special Charts Calculation
       if (isAdmin || isManager) {
@@ -321,6 +335,7 @@ const Dashboard = () => {
               existingPendingKeys.add(dueKey);
               dueList.push({
                 id: pay.id,
+                clientId: cId,
                 name: cName,
                 amount: amt,
                 dueDate: pay.due_date,
@@ -367,6 +382,7 @@ const Dashboard = () => {
           totalDue += projectAmount;
           dueList.push({
             id: `rec-${project.id}`,
+            clientId: cId,
             name: cName,
             amount: projectAmount,
             dueDate: nextDueDate.toISOString().split('T')[0],
@@ -432,7 +448,28 @@ const Dashboard = () => {
             }
           }
         });
+        const newClientsInsights = monthClients.map(cl => {
+          const clientProjectIds = projectsList
+            .filter(pr => pr.client_id === cl.id)
+            .map(pr => pr.id);
+
+          const paymentsForClient = (paymentsList || []).filter(pay => {
+            if (!pay.is_paid || !pay.payment_date) return false;
+            return clientProjectIds.includes(pay.project_id);
+          });
+
+          return {
+            id: cl.id,
+            name: cl.full_name,
+            joinedAt: cl.date || cl.created_at,
+            paidAmount: paymentsForClient.reduce((sum, pay) => sum + (parseFloat(pay.amount || 0) || 0), 0),
+            paymentCount: paymentsForClient.length,
+            payments: paymentsForClient
+          };
+        });
+
         setNewClientsMonthData({ count: monthClients.length, list: monthClients });
+        setNewClientsInsightsData(newClientsInsights);
         setMonthlyClientChartData(monthKeys.map(k => clientsChartMap[k]));
       }
 
@@ -481,6 +518,12 @@ const Dashboard = () => {
     return Object.keys(intervals).map(k => ({ month: k, revenue: intervals[k] }));
   }, [selectedMonth, revChartData, rawRevData]);
 
+  const handlePendingPaymentClick = (due) => {
+    if (due?.clientId) {
+      navigate(`/clients/${due.clientId}`);
+    }
+  };
+
   const filteredDuePayments = React.useMemo(() => {
     let list = allDuePaymentsData.list || [];
     if (duePaymentsFilter === 'this_month') {
@@ -506,6 +549,39 @@ const Dashboard = () => {
 
   const filteredDuePaymentsTotal = filteredDuePayments.reduce((acc, curr) => acc + curr.amount, 0);
 
+  const filteredNewClientsData = React.useMemo(() => {
+    const now = new Date();
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const currentMonthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const last3MonthsStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+
+    const getRangeStart = (filter) => {
+      switch (filter) {
+        case 'last_3_months': return last3MonthsStart;
+        case 'all_time': return null;
+        case 'this_month':
+        default: return currentMonthStart;
+      }
+    };
+
+    const rangeStart = getRangeStart(newClientsFilter);
+
+    return (newClientsInsightsData || []).map(item => {
+      const filteredPayments = (item.payments || []).filter(pay => {
+        if (!pay.payment_date) return false;
+        const payDate = new Date(pay.payment_date);
+        if (!rangeStart) return true;
+        return payDate >= rangeStart && payDate <= currentMonthEnd;
+      });
+
+      return {
+        ...item,
+        paidAmount: filteredPayments.reduce((sum, pay) => sum + (parseFloat(pay.amount || 0) || 0), 0),
+        paymentCount: filteredPayments.length
+      };
+    }).sort((a, b) => b.paidAmount - a.paidAmount);
+  }, [newClientsFilter, newClientsInsightsData]);
+
   return (
     <div className="animate-in" style={{ paddingBottom: 40 }}>
       <div style={{ marginBottom: 28, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -518,6 +594,37 @@ const Dashboard = () => {
           <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)' }}>System Active</span>
         </div>
       </div>
+
+      {overdueInteractions.length > 0 && (
+        <div
+          onClick={() => navigate('/interactions')}
+          style={{
+            marginBottom: 18,
+            padding: '12px 14px',
+            borderRadius: 12,
+            border: '1px solid rgba(244, 63, 94, 0.2)',
+            background: 'rgba(244, 63, 94, 0.08)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 10,
+            cursor: 'pointer'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <AlertCircle size={18} style={{ color: 'var(--rose)' }} />
+            <div>
+              <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+                {overdueInteractions.length === 1 ? '1 interaction follow-up is overdue' : `${overdueInteractions.length} interaction follow-ups are overdue`}
+              </p>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '2px 0 0' }}>
+                {overdueInteractions[0]?.clientName}{overdueInteractions.length > 1 ? ' and others need attention' : ' needs attention'}
+              </p>
+            </div>
+          </div>
+          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--rose)' }}>View Interactions</span>
+        </div>
+      )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 14, marginBottom: 20 }}>
         <StatCard icon={Users}      label="Total Clients"   value={stats.clients}      color="indigo"  onClick={() => navigate('/clients')} />
@@ -576,38 +683,96 @@ const Dashboard = () => {
           </div>
         )}
 
-        <div className="card" style={{ padding: 24 }}>
-          <p className="section-title" style={{ marginBottom: 18 }}>Project Status</p>
-          <div style={{ height: 170, marginBottom: 14 }}>
-            {projData.reduce((s, x) => s + x.value, 0) === 0 ? (
-               <div className="empty-state" style={{ height: '100%', padding: 0 }}>
-                 <p className="empty-desc">No active projects.</p>
-               </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={projData} margin={{ top: 0, right: 0, left: -32, bottom: 0 }}>
-                  <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9.5, fill: 'var(--text-muted)' }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-muted)' }} allowDecimals={false} />
-                  <Tooltip contentStyle={TTStyle} cursor={{ fill: 'var(--bg-hover)', radius: 4 }}/>
-                  <Bar dataKey="value" radius={[4, 4, 0, 0]} fill="#6366f1"
-                    label={false}
-                    cell={(entry) => <rect fill={entry.color} />}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
+        <div className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 18 }}>
+            <div>
+              <p className="section-title">Pending Payments</p>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 3 }}>Due clients and recurring invoices</p>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+              <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total Due</p>
+              <p style={{ fontSize: 16, fontWeight: 800, color: 'var(--rose)' }}>
+                ${filteredDuePaymentsTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <select
+              className="input"
+              style={{ padding: '4px 8px', fontSize: 12 }}
+              value={duePaymentsFilter === 'this_month' || duePaymentsFilter === 'all' ? duePaymentsFilter : 'custom'}
+              onChange={(e) => {
+                if (e.target.value === 'custom') {
+                  setDuePaymentsFilter(new Date().toISOString().split('T')[0]);
+                } else {
+                  setDuePaymentsFilter(e.target.value);
+                }
+              }}
+            >
+              <option value="this_month">Due This Month</option>
+              <option value="all">All Pending</option>
+              <option value="custom">Specific Date...</option>
+            </select>
+
+            {duePaymentsFilter !== 'this_month' && duePaymentsFilter !== 'all' && (
+              <input
+                type="date"
+                className="input"
+                style={{ padding: '4px 8px', fontSize: 12, width: 130 }}
+                value={duePaymentsFilter}
+                onChange={(e) => setDuePaymentsFilter(e.target.value)}
+              />
+            )}
+            {duePaymentsFilter !== 'this_month' && duePaymentsFilter !== 'all' && (
+              <button
+                onClick={() => setDuePaymentsFilter('this_month')}
+                style={{ fontSize: 11, color: 'var(--text-muted)', cursor: 'pointer', background: 'none', border: 'none' }}
+              >
+                Clear
+              </button>
             )}
           </div>
-          <hr className="divider" style={{ marginBottom: 14 }} />
-          {projData.map(item => (
-            <div key={item.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                <span style={{ width: 8, height: 8, borderRadius: 2, background: item.color, display: 'inline-block' }} />
-                <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{item.name}</span>
-              </div>
-              <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{item.value}</span>
+
+          {filteredDuePayments.length === 0 ? (
+            <div className="empty-state" style={{ flex: 1, padding: '24px 0' }}>
+              <p className="empty-desc">No pending payments for this selection.</p>
             </div>
-          ))}
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto', maxHeight: 280 }}>
+              {filteredDuePayments.map((due, idx) => (
+                <button
+                  key={due.id || idx}
+                  type="button"
+                  onClick={() => handlePendingPaymentClick(due)}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '12px 14px', borderRadius: 10,
+                    background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)',
+                    textAlign: 'left', cursor: due.clientId ? 'pointer' : 'default'
+                  }}
+                >
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {due.name}
+                    </p>
+                    <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                      {due.isDerived ? 'Monthly Retainer' : 'Pending Payment'} • Due: {due.dueDate ? new Date(due.dueDate).toLocaleDateString() : 'N/A'}
+                    </p>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <span style={{
+                      fontSize: 14, fontWeight: 800, color: 'var(--rose)',
+                      background: 'rgba(244,63,94,0.08)', padding: '4px 10px', borderRadius: 6,
+                      border: '1px solid rgba(244,63,94,0.15)', display: 'inline-block'
+                    }}>
+                      ${due.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -792,98 +957,52 @@ const Dashboard = () => {
       {/* Custom Cards requested by User */}
       {(isAdmin || isManager) && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }} className="dash-grid">
-          {/* Pending Payments Card */}
-          <div className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column' }}>
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 18 }}>
-              <div>
-                <p className="section-title">Pending Payments</p>
-                <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <select 
-                    className="input" 
-                    style={{ padding: '4px 8px', fontSize: 12 }} 
-                    value={duePaymentsFilter === 'this_month' || duePaymentsFilter === 'all' ? duePaymentsFilter : 'custom'}
-                    onChange={(e) => {
-                      if (e.target.value === 'custom') {
-                        setDuePaymentsFilter(new Date().toISOString().split('T')[0]);
-                      } else {
-                        setDuePaymentsFilter(e.target.value);
-                      }
-                    }}
-                  >
-                    <option value="this_month">Due This Month</option>
-                    <option value="all">All Pending</option>
-                    <option value="custom">Specific Date...</option>
-                  </select>
-                  
-                  {duePaymentsFilter !== 'this_month' && duePaymentsFilter !== 'all' && (
-                    <input 
-                      type="date" 
-                      className="input" 
-                      style={{ padding: '4px 8px', fontSize: 12, width: 130 }} 
-                      value={duePaymentsFilter}
-                      onChange={(e) => setDuePaymentsFilter(e.target.value)}
-                    />
-                  )}
-                  {duePaymentsFilter !== 'this_month' && duePaymentsFilter !== 'all' && (
-                    <button 
-                      onClick={() => setDuePaymentsFilter('this_month')} 
-                      style={{ fontSize: 11, color: 'var(--text-muted)', cursor: 'pointer', background: 'none', border: 'none' }}
-                    >
-                      Clear
-                    </button>
-                  )}
-                </div>
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>Total Due</p>
-                <p style={{ fontSize: 16, fontWeight: 800, color: 'var(--rose)' }}>
-                  ${filteredDuePaymentsTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </p>
-                <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>{filteredDuePayments.length} clients</p>
-              </div>
-            </div>
-            
-            {filteredDuePayments.length === 0 ? (
-              <div className="empty-state" style={{ flex: 1, padding: '24px 0' }}>
-                <p className="empty-desc">No pending payments for this selection.</p>
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12, overflowY: 'auto', maxHeight: 300 }}>
-                {filteredDuePayments.map((due, idx) => (
-                  <div key={due.id || idx} style={{ 
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '12px 14px', borderRadius: 10,
-                    background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)'
-                  }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {due.name}
-                      </p>
-                      <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                        {due.isDerived ? 'Monthly Retainer' : 'Pending Payment'} • Due: {due.dueDate ? new Date(due.dueDate).toLocaleDateString() : 'N/A'}
-                      </p>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <span style={{ 
-                        fontSize: 14, fontWeight: 800, color: 'var(--rose)',
-                        background: 'rgba(244,63,94,0.08)', padding: '4px 10px', borderRadius: 6,
-                        border: '1px solid rgba(244,63,94,0.15)', display: 'inline-block'
-                      }}>
-                        ${due.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Clients Joined Trend Card */}
+          {/* Project Status Card */}
           <div className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
               <div>
-                <p className="section-title">Client Growth Trend</p>
-                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Clients joined in the last 6 months</p>
+                <p className="section-title">Project Status</p>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>Current workload by project state</p>
+              </div>
+            </div>
+            <div style={{ height: 180, marginBottom: 14 }}>
+              {projData.reduce((s, x) => s + x.value, 0) === 0 ? (
+                <div className="empty-state" style={{ height: '100%', padding: 0 }}>
+                  <p className="empty-desc">No active projects.</p>
+                </div>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={projData} margin={{ top: 0, right: 0, left: -32, bottom: 0 }}>
+                    <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9.5, fill: 'var(--text-muted)' }} />
+                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: 'var(--text-muted)' }} allowDecimals={false} />
+                    <Tooltip contentStyle={TTStyle} cursor={{ fill: 'var(--bg-hover)', radius: 4 }} />
+                    <Bar dataKey="value" radius={[4, 4, 0, 0]} fill="#6366f1"
+                      label={false}
+                      cell={(entry) => <rect fill={entry.color} />}
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+            <hr className="divider" style={{ marginBottom: 14 }} />
+            {projData.map(item => (
+              <div key={item.name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 9 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: 2, background: item.color, display: 'inline-block' }} />
+                  <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{item.name}</span>
+                </div>
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)' }}>{item.value}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* New Clients & Payments Card */}
+          <div className="card" style={{ padding: 24, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 18 }}>
+              <div>
+                <p className="section-title">New Clients & Payments</p>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>New clients joined and their paid amount in the selected period</p>
               </div>
               <div style={{ textAlign: 'right' }}>
                 <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>This Month</p>
@@ -893,33 +1012,55 @@ const Dashboard = () => {
               </div>
             </div>
 
-            <div style={{ height: 240, flex: 1 }}>
-              {monthlyClientChartData.reduce((s, x) => s + x.clients, 0) === 0 ? (
-                <div className="empty-state" style={{ height: '100%', padding: 0 }}>
-                  <p className="empty-desc">No new clients in the last 6 months.</p>
-                </div>
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={monthlyClientChartData} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="clientGrad" x1="0" y1="1" x2="0" y2="0">
-                        <stop offset="0%" stopColor="rgba(16, 185, 129, 0.75)" />
-                        <stop offset="100%" stopColor="rgba(52, 211, 153, 0.95)" />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: 'var(--text-muted)' }} allowDecimals={false} />
-                    <Tooltip 
-                      contentStyle={{ ...TTStyle, backdropFilter: 'blur(8px)', boxShadow: 'var(--shadow-card)' }} 
-                      cursor={{ fill: 'var(--bg-hover)', radius: 6 }} 
-                      formatter={v => [v, 'New Clients']} 
-                    />
-                    <Bar dataKey="clients" radius={[4, 4, 0, 0]} fill="url(#clientGrad)" barSize={32} />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
+            <div style={{ marginBottom: 12 }}>
+              <select
+                className="input"
+                style={{ padding: '4px 8px', fontSize: 12 }}
+                value={newClientsFilter}
+                onChange={(e) => setNewClientsFilter(e.target.value)}
+              >
+                <option value="this_month">This Month</option>
+                <option value="last_3_months">Last 3 Months</option>
+                <option value="all_time">All Time</option>
+              </select>
             </div>
+
+            {filteredNewClientsData.length === 0 ? (
+              <div className="empty-state" style={{ flex: 1, padding: '24px 0' }}>
+                <p className="empty-desc">No new clients found for this selection.</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, overflowY: 'auto', maxHeight: 300 }}>
+                {filteredNewClientsData.map(client => (
+                  <div key={client.id} style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '12px 14px', borderRadius: 10,
+                    background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)'
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {client.name}
+                      </p>
+                      <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        Joined: {client.joinedAt ? new Date(client.joinedAt).toLocaleDateString() : 'N/A'}
+                      </p>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <span style={{
+                        fontSize: 14, fontWeight: 800, color: 'var(--emerald)',
+                        background: 'rgba(16,185,129,0.08)', padding: '4px 10px', borderRadius: 6,
+                        border: '1px solid rgba(16,185,129,0.15)', display: 'inline-block'
+                      }}>
+                        ${client.paidAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </span>
+                      <p style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4 }}>
+                        {client.paymentCount} payment{client.paymentCount === 1 ? '' : 's'}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

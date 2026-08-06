@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Filter, MessageSquare, Mail, Phone, Users, FileText, Clock, AlertCircle, X, Loader2 } from 'lucide-react';
+import { Plus, Filter, MessageSquare, Mail, Phone, Users, FileText, Clock, AlertCircle, X, Loader2, CheckCircle2 } from 'lucide-react';
 import { useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
@@ -69,6 +69,7 @@ const Interactions = () => {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [confirmingId, setConfirmingId] = useState(null);
   const [typeFilter, setTypeFilter] = useState('');
   const [showOverdue, setShowOverdue] = useState(false);
   const [formErr, setFormErr] = useState(null);
@@ -113,6 +114,20 @@ const Interactions = () => {
       if (error) throw error;
       setShowModal(false); fetchData();
     } catch (e) { setFormErr(e.message); } finally { setSaving(false); }
+  };
+
+  const handleConfirmFollowUp = async (interactionId) => {
+    if (!window.confirm('Mark this follow-up as confirmed?')) return;
+    setConfirmingId(interactionId);
+    try {
+      const { error } = await supabase.from('interactions').update({ follow_up_date: null }).eq('id', interactionId);
+      if (error) throw error;
+      await fetchData();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setConfirmingId(null);
+    }
   };
 
   const filtered = interactions.filter(i => {
@@ -211,12 +226,24 @@ const Interactions = () => {
                     </p>
                     
                     {item.follow_up_date && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
-                        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Follow-up:</span>
-                        <span style={{ fontSize: 12.5, fontWeight: 600, color: isOverdue ? 'var(--rose)' : 'var(--emerald)', display: 'flex', alignItems: 'center', gap: 5 }}>
-                          {isOverdue && <AlertCircle size={14} />}
-                          {new Date(item.follow_up_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                        </span>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderTop: '1px solid var(--border)', paddingTop: 12, flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Follow-up:</span>
+                          <span style={{ fontSize: 12.5, fontWeight: 600, color: isOverdue ? 'var(--rose)' : 'var(--emerald)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                            {isOverdue && <AlertCircle size={14} />}
+                            {new Date(item.follow_up_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => handleConfirmFollowUp(item.id)}
+                          disabled={confirmingId === item.id}
+                          style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                        >
+                          {confirmingId === item.id ? <Loader2 size={14} style={{ animation: 'spin 0.7s linear infinite' }} /> : <CheckCircle2 size={14} />}
+                          {confirmingId === item.id ? 'Confirming…' : 'Mark Confirmed'}
+                        </button>
                       </div>
                     )}
                   </div>
