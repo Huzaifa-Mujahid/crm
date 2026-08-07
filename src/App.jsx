@@ -17,6 +17,7 @@ import Staff from './pages/Staff';
 import Tasks from './pages/Tasks';
 import ActivityLog from './pages/ActivityLog';
 import Settings from './pages/Settings';
+import SetupAdmin from './pages/SetupAdmin';
 
 /* ── Loading Screen ─────────────────────────────────────────── */
 const LoadingScreen = () => (
@@ -64,6 +65,7 @@ function App() {
             <Route path="/login" element={<Login />} />
             {/* /register is DISABLED — admins manage staff via Staff page */}
             <Route path="/register" element={<Navigate to="/login" replace />} />
+            <Route path="/setup-admin" element={<SetupAdmin />} />
 
             <Route path="/" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
             <Route path="/clients" element={<ProtectedRoute><Clients /></ProtectedRoute>} />
