@@ -289,7 +289,7 @@ const MainLayout = ({ children }) => {
             {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
-            <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>Allied Marketing Solutions</span>
+            <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>Zoverex CRM</span>
           </div>
           {/* Theme toggle in mobile header */}
           <button
