@@ -3,7 +3,15 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 const ThemeContext = createContext();
 
 export const ThemeProvider = ({ children }) => {
-  const [theme, setTheme] = useState(() => localStorage.getItem('crm-theme') || 'dark');
+  const [theme, setTheme] = useState(() => {
+    const storedTheme = localStorage.getItem('crm-theme');
+    const initialTheme = storedTheme === 'dark' ? 'dark' : 'light';
+
+    document.documentElement.setAttribute('data-theme', initialTheme);
+    localStorage.setItem('crm-theme', initialTheme);
+
+    return initialTheme;
+  });
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
